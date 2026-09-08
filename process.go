@@ -45,7 +45,7 @@ func prepare(o options) (*exec.Cmd, func(), error) {
 			n += 2*len(utf16.Encode([]rune(a))) + 3
 		}
 		if strings.EqualFold(filepath.Ext(o.Codex), ".cmd") || n >= 32767 {
-			dir, err := os.MkdirTemp("", "codex-at-")
+			dir, err := promptTempDir()
 			if err != nil {
 				return nil, cleanup, err
 			}

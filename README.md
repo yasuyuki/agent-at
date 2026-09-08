@@ -4,7 +4,7 @@ Run an installed, authenticated Codex once at a local time. The timer needs no
 external runtime. Windows 10/11 x64 is the primary target; Linux and macOS are
 also supported by the source. [日本語](README.ja.md)
 
-**Status: implementation candidate, not yet accepted on Windows hardware.**
+**Status: Windows 11 automated checks passed; interactive and Windows 10 acceptance remain open.**
 See [verification](docs/VERIFICATION.md) for the checks performed and the remaining
 Windows and real-Codex acceptance work. No release has been published.
 
@@ -96,7 +96,8 @@ private environment manager is needed.
 
 Interactive `.cmd` prompts and interactive prompts too large for the Windows
 command-line budget use a private, unique system-temporary directory containing
-`prompt.txt`. The original UTF-8 contents are preserved. Codex receives an
+`prompt.txt`. Windows creates it with a protected current-user DACL and does not
+inherit additional permissions from TEMP. The original UTF-8 contents are preserved. Codex receives an
 instruction to read that file, and the directory is added using `--add-dir`.
 This is a file-reading instruction, not a native prompt-file attachment; actual
 model compliance is a separate acceptance check. That directory is writable

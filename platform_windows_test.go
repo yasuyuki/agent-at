@@ -4,11 +4,31 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestPromptDirectoryACL(t *testing.T) {
+	dir, err := promptTempDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	file := filepath.Join(dir, "prompt.txt")
+	if err := os.WriteFile(file, []byte("private request"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Inspect both objects: a protected directory alone is insufficient unless
+	// its single user ACE propagates to the actual request file.
+	cmd := exec.Command(filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile", "-NonInteractive", "-Command", `$ErrorActionPreference='Stop'; $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; foreach ($p in @($env:CODEX_AT_ACL_DIR, (Join-Path $env:CODEX_AT_ACL_DIR 'prompt.txt'))) { $acl=if ([System.IO.Directory]::Exists($p)) { [System.IO.Directory]::GetAccessControl($p) } else { [System.IO.File]::GetAccessControl($p) }; $rules=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])); if ($rules.Count -ne 1 -or $rules[0].IdentityReference.Value -ne $sid -or $rules[0].AccessControlType -ne 'Allow' -or $rules[0].FileSystemRights -ne 'FullControl') { throw 'Unexpected prompt ACL' }; if ($p -eq $env:CODEX_AT_ACL_DIR -and -not $acl.AreAccessRulesProtected) { throw 'Directory inherits ACL' } }`)
+	cmd.Env = append(os.Environ(), "CODEX_AT_ACL_DIR="+dir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ACL check: %v: %s", err, out)
+	}
+}
 
 // Runs the actual Windows cmd.exe parser and a standard %* forwarding shim.
 // Cross-compilation alone does not execute this test.
