@@ -79,7 +79,7 @@ the existing synthetic `%*` forwarding test shim.
 | Real automatic review | In the preceding invocation, explicitly requested one `exec_command` with `sandbox_permissions=require_escalated`, command `Write-Output CODEX_AT_APPROVAL_OK`; a separate `guardian_review` record returned `risk_level=low`, `user_authorization=high`, `outcome=allow`; the command then output the marker and exited 0, with no human approval interaction |
 | Real long headless / opt-out | Rebuilt exe, `--headless --no-approve-for-me --prompt-file <UTF-8 BOM file>`; 2,000 repetitions of Japanese and shell metacharacters plus a tool-free marker request; `CODEX_AT_LONG_OK`, exit 0, inherited model; Codex reported `approval: never`, existing workspace-write sandbox |
 
-The last row proves headless automatic review for this explicit, harmless shell
+The automatic-review row proves headless automatic review for this explicit, harmless shell
 escalation on this Windows account/version/model. It does not establish denial
 handling, interactive automatic review, network, MCP, sensitive file operations,
 or every possible approval boundary. Unlike the earlier Linux smoke, an actual
@@ -98,6 +98,19 @@ After the fix, native `go test ./...` (including the ACL regression) and
 `go vet ./...` passed. Windows x64 was rebuilt with `CGO_ENABLED=0`, `-trimpath`
 and `-buildvcs=false`; `dist/SHA256SUMS` was regenerated from that executable.
 Linux amd64 and macOS arm64 cross-builds also passed; they are not native tests.
+
+### User-observed interactive smoke (2026-09-08)
+
+The user reported that all five requested handoff steps worked with the rebuilt
+executable: launch from PowerShell at local now + 10 seconds with
+`Reply exactly CODEX_AT_SMOKE_OK.`, observe that response in the dedicated
+console, send `Reply exactly SECOND_OK.` and continue the same conversation,
+enter `/quit` and observe retained history and the key-wait message, then press
+an arrow key and observe the window close. These are user-observed results,
+not desktop observations by the agent. No repeat of these steps is required.
+The report covers those five steps; it does not establish physical resume,
+Ctrl+C, `--close-on-exit`, F-keys, long interactive file reading, interactive
+automatic review, installed `.cmd` integration or another OS.
 
 ## Remaining Windows acceptance
 
@@ -130,7 +143,10 @@ $timerArgs = @(
 .\dist\codex-at.exe @timerArgs
 ```
 
-Then complete this matrix, using harmless synthetic requests:
+Use this matrix for the remaining checks with harmless synthetic requests.
+The ordinary native interactive smoke, second message, normal exit/history and
+arrow-key close are already user-confirmed above; the launch-acknowledgement
+timing and F-key variants retain their narrower automated/unverified scope.
 
 | Operation | Required observation |
 | --- | --- |
@@ -156,9 +172,10 @@ allowed by the sandbox is insufficient. Use harmless disposable inputs and
 record only the observed scope; do not generalize one approval to all tools.
 
 This session can run native Windows processes but has no native desktop control
-surface. Physical sleep/resume, visible history, continued interaction, key wait,
-Ctrl+C console delivery and real interactive long-file reading are not inferred
-from unit tests. Windows 10 and macOS execution are unavailable. The matrix above
+surface. Visible history, continued interaction and arrow-key exit are confirmed
+by the user above. Physical sleep/resume, Ctrl+C console delivery and real
+interactive long-file reading remain unverified. Windows 10 and macOS execution
+are unavailable. The matrix above
 remains the manual acceptance procedure; automated rows have the narrower scopes
 recorded in Windows native results. Real installed `.cmd` integration remains
 unverified. Opt-out was exercised with a tool-free request, not an approval test.
