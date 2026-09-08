@@ -1,8 +1,8 @@
 # codex-at — Initial preview
 
 Draft release notes. No tag, release or public repository has been created.
-Integrate Windows commit `4c5c662` and check the matching executable before
-selecting a release version and publishing these notes.
+The Windows-tested source and executable from `4c5c662` are integrated.
+The version and publication destination remain to be selected.
 
 Schedule an installed, authenticated Codex to run once at a local time.
 The Windows x64 timer is a standalone executable and needs no external runtime.
@@ -19,10 +19,16 @@ Codex itself retains its normal installation and authentication requirements.
 
 ## Verification limits
 
-Five basic Windows steps have been confirmed by the user. Actual sleep/resume,
-Ctrl+C and automatic console closing remain unverified on Windows, along with
-other checks outside those five steps. Full Windows 10/11 acceptance and the
-scope of real Codex automatic review are not established.
+Windows 11 native tests and five user-observed interactive steps passed: initial
+response, continued conversation, normal exit with retained history, and arrow-key
+closure. Headless automatic review allowed one harmless shell escalation without
+human interaction. This does not establish other review boundaries or denial
+handling. Temporary request directories use a protected current-user Windows DACL.
+
+Windows 10, actual sleep/resume, Ctrl+C, automatic console closing, long interactive
+file access and integration with an installed `.cmd` shim remain unverified.
+The native automated `.cmd` tests use a synthetic forwarding shim. See the
+verification record for the complete scope; this is a preview, not full acceptance.
 
 Reservations exist only while the timer is running. There is no persistence,
 wake-up service, retry or recurring schedule. Forced termination can leave

@@ -1,15 +1,12 @@
 # Verification and remaining acceptance
 
-Status as of 2026-09-08: **not accepted for Windows release**. Windows 10/11
-full acceptance remains incomplete. Publication preparation is authorized;
-external publication and push remain on hold.
-
-The user reports that all five basic Windows steps were confirmed and recorded
-in Windows commit `4c5c662`. Do not request those confirmations again. The commit
-has not reached this checkout; its exact step descriptions must be read from
-that record rather than inferred. Actual sleep/resume, Ctrl+C, automatic console
-closing and other checks outside those five steps remain unverified. Integrate
-the Windows-tested source and record before selecting publication artifacts.
+Status as of 2026-09-08: **initial preview prepared; full Windows acceptance
+remains incomplete**. Windows 11 native automated checks, five user-observed
+interactive steps and one headless automatic-review operation have passed, with
+the exact scope recorded below. Windows 10 and the remaining scenarios are not
+verified. The Windows-tested source, executable and record from commit
+`4c5c662` are integrated. Publication preparation is authorized; external
+publication and push remain on hold.
 
 ## Contract and implementation
 
@@ -24,9 +21,7 @@ external timer runtime is part of the product.
 
 The deliverables are source, tests, the unsigned `dist/codex-at.exe`, checksum,
 English CLI, English/Japanese README and MIT license. The initial branch is
-`main`. On 2026-09-08 the user explicitly requested a commit for handoff to
-Windows Codex before native acceptance. This snapshot is for that verification;
-absence of a Windows runner is not treated as a passing test.
+`main`. A preview does not assert full acceptance of every target OS or scenario.
 
 ## Executed
 
@@ -56,7 +51,69 @@ invocation only. It does **not** prove automatic review of shell, filesystem,
 network, MCP or other tool requests, or any Windows behavior. Do not infer that
 `on-request` means automatic review was exercised or that the flag was ignored.
 
-## Windows acceptance matrix (Windows record pending integration)
+## Windows native results (2026-09-08)
+
+Restored the complete `codex-at-handoff.bundle` into a new independent checkout,
+on `main` at `e6d9707c2f9ac22b2c030d54059126ec810d80a4`, with a clean initial
+working tree. No existing directory was overwritten. Origin is the local bundle,
+not a published remote.
+
+Host: native Windows x64, build **26200.9168**, display version **25H2**
+(Windows 11; the legacy registry ProductName still says Windows 10 Pro).
+Go **1.27.1 windows/amd64**, official Windows ZIP SHA-256
+`a3911b5e0e1b1053f25ed0675f4c1c6aad1e2bfcf253df2b9be4caabd2edd95d`,
+verified against <https://go.dev/dl/?mode=json> before extraction.
+The installed native Codex executable reports **0.153.4**, matching the latest
+CLI entry in the [official changelog](https://learn.chatgpt.com/docs/changelog)
+checked on this date. Existing authentication/configuration were used unchanged.
+No installed `.cmd` shim was found; the actual cmd.exe parser was exercised with
+the existing synthetic `%*` forwarding test shim.
+
+| Check | Result / scope |
+| --- | --- |
+| Native `go test ./...`, `go vet ./...`, Windows x64 build | Passed before the fix; original native build hash matched the bundled executable |
+| Native process tests | `.exe` and real `cmd.exe` with synthetic `.cmd`: Japanese, long/multiline requests, shell metacharacters, trailing slash, model/approval flags, stdin/stderr, exit 23, temporary-file read/cleanup and missing-executable cleanup passed |
+| Native dedicated console test | Production IPC launched a fake Codex in a new console, read the long prompt, acknowledged launch and removed its directory; visual output, key handling and actual window closure were not observed |
+| Native scheduler tests | Simulated clock resume/backwards change, cancellation and exactly-once passed; physical suspend and console Ctrl+C remain untested |
+| Real headless initial response | `--at` set to local now + 3 seconds, `--headless --codex <installed native exe>`; request `Reply with exactly CODEX_AT_WINDOWS_OK. Do not use tools or change files.`; inherited `gpt-6-astra`, exact response and timer exit 0 |
+| Real explicit model / close flag | `--headless --close-on-exit --model gpt-6-astra --cd <disposable Git repository>`; explicit model applied, output and exit 0 returned |
+| Real automatic review | In the preceding invocation, explicitly requested one `exec_command` with `sandbox_permissions=require_escalated`, command `Write-Output CODEX_AT_APPROVAL_OK`; a separate `guardian_review` record returned `risk_level=low`, `user_authorization=high`, `outcome=allow`; the command then output the marker and exited 0, with no human approval interaction |
+| Real long headless / opt-out | Rebuilt exe, `--headless --no-approve-for-me --prompt-file <UTF-8 BOM file>`; 2,000 repetitions of Japanese and shell metacharacters plus a tool-free marker request; `CODEX_AT_LONG_OK`, exit 0, inherited model; Codex reported `approval: never`, existing workspace-write sandbox |
+
+The automatic-review row proves headless automatic review for this explicit, harmless shell
+escalation on this Windows account/version/model. It does not establish denial
+handling, interactive automatic review, network, MCP, sensitive file operations,
+or every possible approval boundary. Unlike the earlier Linux smoke, an actual
+review request and decision were observed, not merely option acceptance.
+
+Independent review found that Unix mode bits did not protect temporary request
+files on Windows. The actual TEMP ACL allowed additional principals to modify
+children. The fix creates the directory atomically with a protected current-user
+DACL and an inheritable file/directory ACE, before writing any request bytes.
+The regression inspects both directory and file ACLs, checks inheritance is
+blocked on the directory, and requires exactly the current-user FullControl ACE.
+It does not impersonate another account. Normal Codex sandbox access to this
+directory must still be verified in the interactive long-request check below.
+
+After the fix, native `go test ./...` (including the ACL regression) and
+`go vet ./...` passed. Windows x64 was rebuilt with `CGO_ENABLED=0`, `-trimpath`
+and `-buildvcs=false`; `dist/SHA256SUMS` was regenerated from that executable.
+Linux amd64 and macOS arm64 cross-builds also passed; they are not native tests.
+
+### User-observed interactive smoke (2026-09-08)
+
+The user reported that all five requested handoff steps worked with the rebuilt
+executable: launch from PowerShell at local now + 10 seconds with
+`Reply exactly CODEX_AT_SMOKE_OK.`, observe that response in the dedicated
+console, send `Reply exactly SECOND_OK.` and continue the same conversation,
+enter `/quit` and observe retained history and the key-wait message, then press
+an arrow key and observe the window close. These are user-observed results,
+not desktop observations by the agent. No repeat of these steps is required.
+The report covers those five steps; it does not establish physical resume,
+Ctrl+C, `--close-on-exit`, F-keys, long interactive file reading, interactive
+automatic review, installed `.cmd` integration or another OS.
+
+## Remaining Windows acceptance
 
 Use both a Windows 10 x64 and Windows 11 x64 desktop session with a usable
 console and installed/authenticated Codex. Open PowerShell in this repository's
@@ -87,8 +144,10 @@ $timerArgs = @(
 .\dist\codex-at.exe @timerArgs
 ```
 
-After integrating the Windows record, retain its confirmed results and use this
-matrix only for remaining checks, with harmless synthetic requests:
+Use this matrix for the remaining checks with harmless synthetic requests.
+The ordinary native interactive smoke, second message, normal exit/history and
+arrow-key close are already user-confirmed above; the launch-acknowledgement
+timing and F-key variants retain their narrower automated/unverified scope.
 
 | Operation | Required observation |
 | --- | --- |
@@ -113,11 +172,29 @@ boundary for that environment. A tool-free answer or an operation already
 allowed by the sandbox is insufficient. Use harmless disposable inputs and
 record only the observed scope; do not generalize one approval to all tools.
 
-The current development environment exposes no Windows execution tool or
-Windows mount. Its documented isolation blocks host/LAN/Tailscale/VSOCK access.
-No boundary was changed to obtain a runner. These remaining tests must be
-performed from a Windows-capable session before acceptance. The initial commit
-is explicitly authorized as a handoff snapshot while those checks remain open.
+The Windows verification session could run native Windows processes but had no
+native desktop control surface. Visible history, continued interaction and arrow-key exit are confirmed
+by the user above. Physical sleep/resume, Ctrl+C console delivery and real
+interactive long-file reading remain unverified. Windows 10 and macOS execution
+are unavailable. The matrix above
+remains the manual acceptance procedure; automated rows have the narrower scopes
+recorded in Windows native results. Real installed `.cmd` integration remains
+unverified. Opt-out was exercised with a tool-free request, not an approval test.
 After testing and any fixes, update this record and commit only this project's
 changes; run the workspace's common push preflight with explicit **hold**. Do
 not publish or push.
+
+## Publication artifact verification
+
+The publication-preparation checkout integrates the Windows-tested source and
+executable without changing application code. Linux race tests and vet,
+Windows vet/test cross-compilation, and macOS arm64 cross-build pass after
+integration. A Go 1.27.1 Windows x64 cross-build using `CGO_ENABLED=0`,
+`-trimpath` and `-buildvcs=false` is compared byte-for-byte to the native Windows
+executable; the published checksum must refer to that same binary.
+
+The Windows ZIP retains the README directory layout: `dist/codex-at.exe`,
+`dist/SHA256SUMS`, both READMEs, `LICENSE`, and the verification, draft release
+notes and Go license notice under `docs/`. It includes no Git bundle, private workspace records or
+credentials. Extract it before running the README commands. Checksums establish
+integrity, not an Authenticode signature. The executable remains unsigned.

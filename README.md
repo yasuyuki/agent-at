@@ -4,12 +4,12 @@ Run an installed, authenticated Codex once at a local time. The timer needs no
 external runtime. Windows 10/11 x64 is the primary target; Linux and macOS are
 also supported by the source. [日本語](README.ja.md)
 
-**Status: preparing an initial preview; no release has been published.**
-The user has confirmed five basic Windows verification steps. Their detailed
-record is in Windows commit `4c5c662`, pending integration into this checkout.
-Actual sleep/resume, Ctrl+C, automatic console closing and other checks outside
-those five steps remain unverified. See [verification](docs/VERIFICATION.md);
-full Windows 10/11 acceptance and auto-review coverage are not established.
+**Status: initial preview prepared; no release has been published.**
+Windows 11 native automated tests and five basic interactive steps have passed.
+One harmless shell escalation was automatically reviewed and allowed in headless
+mode. Windows 10, actual sleep/resume, Ctrl+C, automatic console closing and
+other scenarios remain unverified. See [verification](docs/VERIFICATION.md) for
+the exact tested scope and remaining checks.
 
 ## Use
 
@@ -99,7 +99,8 @@ private environment manager is needed.
 
 Interactive `.cmd` prompts and interactive prompts too large for the Windows
 command-line budget use a private, unique system-temporary directory containing
-`prompt.txt`. The original UTF-8 contents are preserved. Codex receives an
+`prompt.txt`. Windows creates it with a protected current-user DACL and does not
+inherit additional permissions from TEMP. The original UTF-8 contents are preserved. Codex receives an
 instruction to read that file, and the directory is added using `--add-dir`.
 This is a file-reading instruction, not a native prompt-file attachment; actual
 model compliance is a separate acceptance check. That directory is writable
@@ -151,4 +152,6 @@ Compiling the Windows tests is not running them. Follow the Windows matrix in
 [verification](docs/VERIFICATION.md) before claiming acceptance. The tests use a
 fake Codex process; they do not authenticate or call an AI service.
 
-MIT licensed. This project is not an official OpenAI product.
+MIT licensed. The executable includes Go runtime/standard-library code; its
+[license notice](docs/GO-LICENSE.txt) is included in the distribution.
+This project is not an official OpenAI product.
