@@ -1,8 +1,15 @@
 # Verification and remaining acceptance
 
 Status as of 2026-09-08: **not accepted for Windows release**. Windows 10/11
-native execution and interactive real-Codex checks remain mandatory. No external
-publication or push is authorized for this work.
+full acceptance remains incomplete. Publication preparation is authorized;
+external publication and push remain on hold.
+
+The user reports that all five basic Windows steps were confirmed and recorded
+in Windows commit `4c5c662`. Do not request those confirmations again. The commit
+has not reached this checkout; its exact step descriptions must be read from
+that record rather than inferred. Actual sleep/resume, Ctrl+C, automatic console
+closing and other checks outside those five steps remain unverified. Integrate
+the Windows-tested source and record before selecting publication artifacts.
 
 ## Contract and implementation
 
@@ -49,7 +56,7 @@ invocation only. It does **not** prove automatic review of shell, filesystem,
 network, MCP or other tool requests, or any Windows behavior. Do not infer that
 `on-request` means automatic review was exercised or that the flag was ignored.
 
-## Required Windows acceptance (not run)
+## Windows acceptance matrix (Windows record pending integration)
 
 Use both a Windows 10 x64 and Windows 11 x64 desktop session with a usable
 console and installed/authenticated Codex. Open PowerShell in this repository's
@@ -80,7 +87,8 @@ $timerArgs = @(
 .\dist\codex-at.exe @timerArgs
 ```
 
-Then complete this matrix, using harmless synthetic requests:
+After integrating the Windows record, retain its confirmed results and use this
+matrix only for remaining checks, with harmless synthetic requests:
 
 | Operation | Required observation |
 | --- | --- |

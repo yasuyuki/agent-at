@@ -4,9 +4,12 @@ Run an installed, authenticated Codex once at a local time. The timer needs no
 external runtime. Windows 10/11 x64 is the primary target; Linux and macOS are
 also supported by the source. [日本語](README.ja.md)
 
-**Status: implementation candidate, not yet accepted on Windows hardware.**
-See [verification](docs/VERIFICATION.md) for the checks performed and the remaining
-Windows and real-Codex acceptance work. No release has been published.
+**Status: preparing an initial preview; no release has been published.**
+The user has confirmed five basic Windows verification steps. Their detailed
+record is in Windows commit `4c5c662`, pending integration into this checkout.
+Actual sleep/resume, Ctrl+C, automatic console closing and other checks outside
+those five steps remain unverified. See [verification](docs/VERIFICATION.md);
+full Windows 10/11 acceptance and auto-review coverage are not established.
 
 ## Use
 
