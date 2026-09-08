@@ -4,7 +4,12 @@ Run an installed, authenticated Codex once at a local time. The timer needs no
 external runtime. Windows 10/11 x64 is the primary target; Linux and macOS are
 also supported by the source. [日本語](README.ja.md)
 
-**Status: initial preview prepared; no release has been published.**
+**v0.1.0-preview.1 — initial preview.**
+Download the [Windows x64 ZIP](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/codex-at-windows-x64.zip)
+and [checksums](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/SHA256SUMS)
+from the [release page](https://github.com/yasuyuki/codex-at/releases/tag/v0.1.0-preview.1).
+Extract the ZIP before following the usage examples below.
+
 Windows 11 native automated tests and five basic interactive steps have passed.
 One harmless shell escalation was automatically reviewed and allowed in headless
 mode. Windows 10, actual sleep/resume, Ctrl+C, automatic console closing and

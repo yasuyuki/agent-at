@@ -1,8 +1,9 @@
-# codex-at — Initial preview
+# codex-at v0.1.0-preview.1 — Initial preview
 
-Draft release notes. No tag, release or public repository has been created.
+This is the first prerelease of [codex-at](https://github.com/yasuyuki/codex-at).
+Download `codex-at-windows-x64.zip` and extract it to use the Windows executable.
+`codex-at-source.zip`, `SHA256SUMS` and `SOURCE-COMMIT.txt` are also provided.
 The Windows-tested source and executable from `4c5c662` are integrated.
-The version and publication destination remain to be selected.
 
 Schedule an installed, authenticated Codex to run once at a local time.
 The Windows x64 timer is a standalone executable and needs no external runtime.

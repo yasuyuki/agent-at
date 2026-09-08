@@ -1,12 +1,12 @@
 # Verification and remaining acceptance
 
-Status as of 2026-09-08: **initial preview prepared; full Windows acceptance
+Status as of 2026-09-08: **v0.1.0-preview.1; full Windows acceptance
 remains incomplete**. Windows 11 native automated checks, five user-observed
 interactive steps and one headless automatic-review operation have passed, with
 the exact scope recorded below. Windows 10 and the remaining scenarios are not
 verified. The Windows-tested source, executable and record from commit
-`4c5c662` are integrated. Publication preparation is authorized; external
-publication and push remain on hold.
+`4c5c662` are integrated. The user authorized publication, including the source push and initial
+prerelease. The release retains the limitations recorded here.
 
 ## Contract and implementation
 
@@ -180,9 +180,8 @@ are unavailable. The matrix above
 remains the manual acceptance procedure; automated rows have the narrower scopes
 recorded in Windows native results. Real installed `.cmd` integration remains
 unverified. Opt-out was exercised with a tool-free request, not an approval test.
-After testing and any fixes, update this record and commit only this project's
-changes; run the workspace's common push preflight with explicit **hold**. Do
-not publish or push.
+After future testing or fixes, update this record with the exact observed scope.
+Do not treat checks outside the confirmed scenarios as completed.
 
 ## Publication artifact verification
 
@@ -194,7 +193,7 @@ integration. A Go 1.27.1 Windows x64 cross-build using `CGO_ENABLED=0`,
 executable; the published checksum must refer to that same binary.
 
 The Windows ZIP retains the README directory layout: `dist/codex-at.exe`,
-`dist/SHA256SUMS`, both READMEs, `LICENSE`, and the verification, draft release
+`dist/SHA256SUMS`, both READMEs, `LICENSE`, and the verification, release
 notes and Go license notice under `docs/`. It includes no Git bundle, private workspace records or
 credentials. Extract it before running the README commands. Checksums establish
 integrity, not an Authenticode signature. The executable remains unsigned.

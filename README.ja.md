@@ -5,7 +5,12 @@
 ソースは Linux／macOS でも利用でき、対話型は現在のターミナルで動作します。
 [English](README.md)
 
-**初回プレビューの準備済みです。まだ公開していません。**
+**v0.1.0-preview.1 — 初回プレビュー版。**
+[Windows x64 ZIP](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/codex-at-windows-x64.zip)と
+[チェックサム](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/SHA256SUMS)は
+[リリースページ](https://github.com/yasuyuki/codex-at/releases/tag/v0.1.0-preview.1)から取得できます。
+ZIP を展開してから、以下の使い方を参照してください。
+
 Windows 11 のネイティブ自動試験と基本対話5手順は確認済みです。ヘッドレスでは、
 無害なシェル操作1件の自動レビュー・許可も確認しました。Windows 10、実スリープ復帰、
 Ctrl+C、自動クローズなどは未検証です。確認範囲と残項目は
