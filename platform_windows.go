@@ -69,6 +69,55 @@ func platformCommand(path string, args []string) (*exec.Cmd, error) {
 
 type launchResult struct{ Error string }
 
+// prepareConsole selects UTF-8 for an interactive Windows console while Codex
+// runs. Console code pages belong to the console rather than this process, so
+// callers must invoke the returned function when the session is complete.
+func prepareConsole() (func(), error) {
+	noop := func() {}
+	in, out := os.Stdin, os.Stdout
+	if in == nil || out == nil {
+		return noop, nil
+	}
+	kernel := syscall.NewLazyDLL("kernel32.dll")
+	getMode := kernel.NewProc("GetConsoleMode")
+	for _, f := range []*os.File{in, out} {
+		var mode uint32
+		ok, _, _ := getMode.Call(f.Fd(), uintptr(unsafe.Pointer(&mode)))
+		if ok == 0 {
+			// Standard streams can be files, pipes, or absent. There is no
+			// console state to change in that case.
+			return noop, nil
+		}
+	}
+	getInput := kernel.NewProc("GetConsoleCP")
+	getOutput := kernel.NewProc("GetConsoleOutputCP")
+	setInput := kernel.NewProc("SetConsoleCP")
+	setOutput := kernel.NewProc("SetConsoleOutputCP")
+	inputCP, _, inputErr := getInput.Call()
+	if inputCP == 0 {
+		return noop, inputErr
+	}
+	outputCP, _, outputErr := getOutput.Call()
+	if outputCP == 0 {
+		return noop, outputErr
+	}
+	const utf8CodePage = 65001
+	if ok, _, err := setInput.Call(utf8CodePage); ok == 0 {
+		return noop, err
+	}
+	if ok, _, err := setOutput.Call(utf8CodePage); ok == 0 {
+		// Avoid leaving a half-configured console when output setup fails.
+		_, _, _ = setInput.Call(inputCP)
+		return noop, err
+	}
+	return func() {
+		// Best effort: process exit also releases a dedicated console, while
+		// an attached console must regain its caller's prior settings.
+		_, _, _ = setInput.Call(inputCP)
+		_, _, _ = setOutput.Call(outputCP)
+	}, nil
+}
+
 func launchConsole(o options) int {
 	requestR, requestW, err := os.Pipe()
 	if err != nil {

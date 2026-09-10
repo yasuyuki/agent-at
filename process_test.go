@@ -15,6 +15,7 @@ import (
 
 type observation struct {
 	Args                     []string
+	InputCP, OutputCP        uint32
 	Dir, Input, File, Prompt string
 }
 
@@ -24,6 +25,7 @@ func TestMain(m *testing.M) {
 	}
 	if os.Getenv("CODEX_AT_TEST_HELPER") == "1" {
 		o := observation{Args: os.Args[1:]}
+		o.InputCP, o.OutputCP = testConsoleCodePages()
 		o.Dir, _ = os.Getwd()
 		if len(o.Args) > 0 && o.Args[0] == "exec" {
 			b, _ := io.ReadAll(os.Stdin)
@@ -202,5 +204,73 @@ func TestParseOptions(t *testing.T) {
 		if _, err := parseOptions(append(base, "prompt"), now, io.Discard); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestResume(t *testing.T) {
+	o := helperOptions(t)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	base := []string{"--codex", o.Codex, "--cd", o.CD}
+	id := "01912345-6789-7abc-8def-0123456789ab"
+	for _, headless := range []bool{false, true} {
+		args := append(append([]string{}, base...), "--resume", id)
+		if headless {
+			args = append(args, "--headless")
+		}
+		got, err := parseOptions(args, now, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Prompt != "resume" || got.Resume != id || !got.At.Equal(now) {
+			t.Fatalf("resume options: %+v", got)
+		}
+		cmd, cleanup, err := prepare(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer cleanup()
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = io.Discard
+		if err := cmd.Run(); err != nil {
+			t.Fatal(err)
+		}
+		var seen observation
+		if err := json.Unmarshal(stdout.Bytes(), &seen); err != nil {
+			t.Fatal(err)
+		}
+		prompt := "resume"
+		if headless {
+			prompt = "-"
+			if seen.Input != "resume" {
+				t.Fatalf("input: %q", seen.Input)
+			}
+		}
+		wantTail := []string{"resume", "--", id, prompt}
+		if len(seen.Args) < 4 || !reflect.DeepEqual(seen.Args[len(seen.Args)-4:], wantTail) {
+			t.Fatalf("args: %q", seen.Args)
+		}
+		if seen.File != "" {
+			t.Fatal("resume must not use a file instruction")
+		}
+	}
+	got, err := parseOptions(append(append([]string{}, base...), "--at", "00:01", "--resume", id, "--new-console"), now, io.Discard)
+	if err != nil || !got.At.Equal(now.Add(time.Minute)) || !got.NewConsole {
+		t.Fatalf("scheduled resume: %+v, %v", got, err)
+	}
+	for _, tail := range [][]string{{"--resume", ""}, {"--resume", " "}, {"--resume", "-"}, {"--resume", "bad\x00id"}, {"--resume", id, "other prompt"}, {"--resume", id, "--prompt-file", "missing"}} {
+		if _, err := parseOptions(append(append([]string{}, base...), tail...), now, io.Discard); err == nil {
+			t.Fatalf("accepted %q", tail)
+		}
+	}
+}
+
+func TestDefaultResumeWaitsForCodex(t *testing.T) {
+	o := helperOptions(t)
+	t.Setenv("CODEX_AT_TEST_FAIL", "1")
+	// The default must run in the current terminal and return the child's exit,
+	// not acknowledge creation of a detached dedicated window with exit zero.
+	if code := run([]string{"--codex", o.Codex, "--cd", o.CD, "--resume", "01912345-6789-7abc-8def-0123456789ab"}); code != 23 {
+		t.Fatalf("default resume exit: %d", code)
 	}
 }

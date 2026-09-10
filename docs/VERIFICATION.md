@@ -1,12 +1,42 @@
 # Verification and remaining acceptance
 
-Status as of 2026-09-08: **v0.1.0-preview.1; full Windows acceptance
-remains incomplete**. Windows 11 native automated checks, five user-observed
-interactive steps and one headless automatic-review operation have passed, with
-the exact scope recorded below. Windows 10 and the remaining scenarios are not
-verified. The Windows-tested source, executable and record from commit
-`4c5c662` are integrated. The user authorized publication, including the source push and initial
-prerelease. The release retains the limitations recorded here.
+Status as of 2026-09-10: the published **v0.1.0-preview.1** remains the
+initial release. The current source/build adds explicit session resume, inherits
+the caller's terminal by default and initializes Windows console UTF-8.
+The user confirmed Windows 10 job execution and successful saved-file recovery,
+but reported Japanese console output was unreadable. This is not confirmation
+of the new display fix. Full Windows acceptance remains incomplete; historical
+Windows 11 results below apply to the earlier build.
+
+## Resume and terminal update (2026-09-10)
+
+Contract: `--resume ID` must reopen that saved Codex conversation and send only
+`resume`; `--at` optionally delays it. New requests retain their required time.
+Default interactive execution must keep the caller's console and environment;
+`--new-console` explicitly requests the old Windows dedicated window. Configure
+UTF-8 console input/output during Codex execution and restore prior code pages
+on return. Codex's configured tool shell is unchanged.
+
+Verified on Linux with Go 1.27.1 (official archive checksum rechecked):
+
+- `go test -race ./...` and `go vet ./...`: pass. Immediate/scheduled resume,
+  prompt conflicts, exact interactive argument/headless stdin payload, session
+  ID forwarding and default attached-process exit status are covered.
+- Windows amd64 `go vet ./...`, `go test -c` and application cross-build: pass.
+  The new native tests check console UTF-8/restoration, dedicated-child code
+  pages and exact `.cmd` resume arguments; they have **not run on Windows**.
+- Real Codex 0.154.0 headless resume: a disposable conversation was given a
+  marker to remember without tools. The rebuilt timer sent only `resume` and
+  received the remembered marker; the resumed session ID matched the original,
+  exit 0. This proves conversation continuity, not usage-limit reset handling.
+
+Remaining acceptance: execute the native tests and observe Japanese input/output
+on Windows 10/11 in the inherited terminal and `--new-console`, using both native
+Codex and its installed `.cmd` shim. Confirm a previously limit-stopped session
+continues after quota recovers. Font rendering, visible interactive resume and
+actual limit recovery are not established by cross-compilation or the Linux test.
+The new executable/checksum are in `dist`; the initial GitHub Release ZIP has
+not been replaced by this update.
 
 ## Contract and implementation
 
@@ -20,7 +50,7 @@ UTF-8 file. No scheduler service, persistence, retries, private launcher or
 external timer runtime is part of the product.
 
 The deliverables are source, tests, the unsigned `dist/codex-at.exe`, checksum,
-English CLI, English/Japanese README and MIT license. The initial branch is
+English CLI, English/Japanese README and MIT license. The integration branch is
 `main`. A preview does not assert full acceptance of every target OS or scenario.
 
 ## Executed
@@ -151,11 +181,12 @@ timing and F-key variants retain their narrower automated/unverified scope.
 
 | Operation | Required observation |
 | --- | --- |
-| Default interactive request | Parent exits after process-start acknowledgement; child displays the exact requested response |
+| Default interactive request | Caller's terminal is retained; timer waits for Codex and returns its exit code |
+| `--new-console` interactive request | Parent exits after process-start acknowledgement; dedicated child displays the response |
 | Continue with a second message | Conversation continues in the same Codex session |
-| End Codex normally | Prior output remains; the window stays open |
+| End Codex normally with `--new-console` | Prior output remains; the window stays open |
 | Press an arrow/F-key in the held window | Window closes, not just for character keys |
-| Repeat with `--close-on-exit` | Window closes only after Codex exits |
+| Repeat `--new-console` with `--close-on-exit` | Window closes only after Codex exits |
 | Ctrl+C during a running interactive task | Codex handles the event; supervisor survives to clean up and hold the window after Codex exits |
 | `--headless` with and without `--close-on-exit` | No dedicated window; original prompt on stdin, stdout/stderr and exit status reach caller |
 | Native executable and `.cmd` with a long UTF-8 request file | File contents are intact; Codex actually reads and executes the file request; no prompt metacharacters become shell code |
@@ -175,8 +206,8 @@ record only the observed scope; do not generalize one approval to all tools.
 The Windows verification session could run native Windows processes but had no
 native desktop control surface. Visible history, continued interaction and arrow-key exit are confirmed
 by the user above. Physical sleep/resume, Ctrl+C console delivery and real
-interactive long-file reading remain unverified. Windows 10 and macOS execution
-are unavailable. The matrix above
+interactive long-file reading remain unverified. Windows 10 task execution is
+user-confirmed above; native automated tests on that OS and macOS execution remain unverified. The matrix above
 remains the manual acceptance procedure; automated rows have the narrower scopes
 recorded in Windows native results. Real installed `.cmd` integration remains
 unverified. Opt-out was exercised with a tool-free request, not an approval test.

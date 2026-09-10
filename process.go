@@ -28,6 +28,10 @@ func codexArgs(o options, prompt string) []string {
 	if o.Model != "" {
 		args = append(args, "--model", o.Model)
 	}
+	if o.Resume != "" {
+		args = append(args, "resume", "--", o.Resume)
+		return append(args, prompt)
+	}
 	return append(args, "--", prompt)
 }
 
@@ -36,7 +40,7 @@ func prepare(o options) (*exec.Cmd, func(), error) {
 	prompt := o.Prompt
 	if o.Headless {
 		prompt = "-"
-	} else {
+	} else if o.Resume == "" {
 		// Stay below cmd.exe's 8191-character limit for shims, and the Win32
 		// 32767 UTF-16 command-line limit. Keep all interactive prompts in a file
 		// for .cmd; use a file for .exe when its complete argument line is long.
@@ -80,6 +84,15 @@ func prepare(o options) (*exec.Cmd, func(), error) {
 
 // started reports process creation, not completion of the prompt or authentication.
 func runCodex(o options, started func(error)) int {
+	restore, consoleErr := prepareConsole()
+	defer restore()
+	if consoleErr != nil {
+		if started != nil {
+			started(consoleErr)
+		}
+		fmt.Fprintln(os.Stderr, "codex-at:", consoleErr)
+		return 1
+	}
 	if !o.Headless {
 		// Catch Ctrl+C in the supervisor while Codex handles the same console /
 		// terminal event. Keep the supervisor alive for cleanup and exit hold.
