@@ -5,9 +5,9 @@ external runtime. Windows 10/11 x64 is the primary target; Linux and macOS are
 also supported by the source. [日本語](README.ja.md)
 
 **Legacy v0.1.0-preview.1 — initial Codex-only preview.**
-The [legacy Windows x64 ZIP](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/codex-at-windows-x64.zip)
-and [checksums](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/SHA256SUMS)
-are available from the [release page](https://github.com/yasuyuki/codex-at/releases/tag/v0.1.0-preview.1).
+The [legacy Windows x64 ZIP](https://github.com/yasuyuki/agent-at/releases/download/v0.1.0-preview.1/codex-at-windows-x64.zip)
+and [checksums](https://github.com/yasuyuki/agent-at/releases/download/v0.1.0-preview.1/SHA256SUMS)
+are available from the [release page](https://github.com/yasuyuki/agent-at/releases/tag/v0.1.0-preview.1).
 That ZIP is a legacy `codex-at` artifact; extract it before use. The changes below (the `agent-at` name, Claude selection, `--resume`, inherited
 terminal, `--new-console` and UTF-8 console setup) are in the current source/build and are
 not included in that initial release ZIP.
@@ -66,8 +66,8 @@ Windows executable. Interactive mode uses the current terminal on those OSes.
 
 Migration from the preview: use `--agent-path` instead of `--codex`, and
 `--no-auto-approve` instead of `--no-approve-for-me`. The old names are not
-aliases. The repository remains [yasuyuki/codex-at](https://github.com/yasuyuki/codex-at)
-for continuity; current binaries and the Go module are named `agent-at`.
+aliases. The repository is [yasuyuki/agent-at](https://github.com/yasuyuki/agent-at);
+current binaries and the Go module are also named `agent-at`.
 
 To resume a task stopped by a usage limit, use its full session ID (the hash
 shown by the selected agent), under the same account and agent home that saved it:

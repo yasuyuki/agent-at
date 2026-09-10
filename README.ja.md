@@ -6,9 +6,9 @@
 [English](README.md)
 
 **v0.1.0-preview.1 — Codex 専用の旧プレビュー版。**
-[旧 Windows x64 ZIP](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/codex-at-windows-x64.zip)と
-[チェックサム](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/SHA256SUMS)は
-[リリースページ](https://github.com/yasuyuki/codex-at/releases/tag/v0.1.0-preview.1)から取得できます。この ZIP は旧 `codex-at` 成果物です。
+[旧 Windows x64 ZIP](https://github.com/yasuyuki/agent-at/releases/download/v0.1.0-preview.1/codex-at-windows-x64.zip)と
+[チェックサム](https://github.com/yasuyuki/agent-at/releases/download/v0.1.0-preview.1/SHA256SUMS)は
+[リリースページ](https://github.com/yasuyuki/agent-at/releases/tag/v0.1.0-preview.1)から取得できます。この ZIP は旧 `codex-at` 成果物です。
 ZIP は展開して使用します。以下の `agent-at` への改名、Claude 選択、`--resume`、起動元ターミナルの継承、
 `--new-console`、UTF-8 対策は現在のソース・ビルドの機能であり、初回リリース ZIP には含まれません。
 
@@ -58,8 +58,8 @@ $timerArgs = @(
 
 旧プレビューから移行する場合は、`--codex` の代わりに `--agent-path`、
 `--no-approve-for-me` の代わりに `--no-auto-approve` を使います。旧名は別名ではありません。
-互換性のためリポジトリは [yasuyuki/codex-at](https://github.com/yasuyuki/codex-at) のままですが、
-現在のバイナリと Go module は `agent-at` です。
+リポジトリは [yasuyuki/agent-at](https://github.com/yasuyuki/agent-at) です。
+現在のバイナリと Go module も `agent-at` に統一しています。
 
 利用枠制限で止まったジョブは、選択したエージェントが表示した完全な会話 ID（hash）を指定して再開します。
 保存時と同じアカウント・選択したエージェントの home を使用してください。

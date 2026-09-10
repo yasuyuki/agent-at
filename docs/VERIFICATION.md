@@ -1,7 +1,7 @@
 # Verification and remaining acceptance
 
 Status as of 2026-09-10: the current command/build is **agent-at**, with Codex
-and Claude Code selected by `--agent`. The repository URL remains `codex-at`.
+and Claude Code selected by `--agent`. The repository is now [yasuyuki/agent-at](https://github.com/yasuyuki/agent-at).
 The published **codex-at v0.1.0-preview.1** ZIP is an earlier build and has not
 been replaced. Historical Windows results below apply to that earlier build,
 not to native acceptance of the new Claude adapter or the UTF-8 display fix.
@@ -14,7 +14,8 @@ new tasks, exact `resume` messages to a selected saved session, stdin in
 headless mode, UTF-8 prompt files, model/additional directories, process exit
 codes and existing terminal/console behavior. `--agent-path` and
 `--no-auto-approve` replace the Codex-specific timer option names. Release
-history and the repository URL are unchanged.
+history is retained. The repository was subsequently renamed from `codex-at`
+to `agent-at`; the initial release artifact names are unchanged.
 
 Implementation: Codex uses its existing CLI arguments; Claude uses `--print`
 for headless stdin, `--resume=ID` for the saved conversation, process cwd for
