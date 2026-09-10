@@ -1,9 +1,8 @@
 # Verification and remaining acceptance
 
-Status as of 2026-09-10: the current command/build is **agent-at**, with Codex
+Status as of 2026-09-10: the **v0.2.0** command/build is **agent-at**, with Codex
 and Claude Code selected by `--agent`. The repository is now [yasuyuki/agent-at](https://github.com/yasuyuki/agent-at).
-The published **codex-at v0.1.0-preview.1** ZIP is an earlier build and has not
-been replaced. Historical Windows results below apply to that earlier build,
+The **codex-at v0.1.0-preview.1** ZIP is retained as a separate historical release. Historical Windows results below apply to that earlier build,
 not to native acceptance of the new Claude adapter or the UTF-8 display fix.
 
 ## Agent selection and Claude Code (2026-09-10)
@@ -257,7 +256,7 @@ unverified. Opt-out was exercised with a tool-free request, not an approval test
 After future testing or fixes, update this record with the exact observed scope.
 Do not treat checks outside the confirmed scenarios as completed.
 
-## Publication artifact verification
+## Initial preview artifact verification
 
 The publication-preparation checkout integrates the Windows-tested source and
 executable without changing application code. Linux race tests and vet,
@@ -271,3 +270,23 @@ The Windows ZIP retains the README directory layout: `dist/codex-at.exe`,
 notes and Go license notice under `docs/`. It includes no Git bundle, private workspace records or
 credentials. Extract it before running the README commands. Checksums establish
 integrity, not an Authenticode signature. The executable remains unsigned.
+
+
+## v0.2.0 release artifacts
+
+The v0.2.0 source keeps the application code from the agent-selection update.
+Release preparation runs Linux `go test -race ./...` and `go vet ./...`, Windows
+amd64 vet/test cross-compilation, and Windows/macOS cross-builds using Go 1.27.1.
+The Windows rebuild must match the tracked `dist/agent-at.exe` byte for byte;
+`dist/SHA256SUMS` identifies that executable. This reproducibility check does
+not establish native Windows execution of the new features.
+
+`agent-at-windows-x64.zip` includes `dist/agent-at.exe`, `dist/SHA256SUMS`, both
+READMEs, `LICENSE`, and the verification, release notes and Go license notice.
+`agent-at-source.zip` is a Git archive of the release commit under `agent-at/`.
+`SOURCE-COMMIT.txt` identifies the exact commit shared by the release tag and
+both ZIPs. Top-level `SHA256SUMS` covers both ZIPs and `SOURCE-COMMIT.txt`.
+The ZIP manifests and extracted executable hash are checked before publication;
+public downloads are compared with the prepared artifacts after publication.
+The executable is unsigned. All platform and approval limits above still apply
+when publishing this version as a regular release.
