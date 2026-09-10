@@ -1,6 +1,6 @@
 # codex-at v0.1.0-preview.1 — Initial preview
 
-This is the first prerelease of [codex-at](https://github.com/yasuyuki/codex-at).
+This is the first prerelease of [codex-at](https://github.com/yasuyuki/agent-at).
 Download `codex-at-windows-x64.zip` and extract it to use the Windows executable.
 `codex-at-source.zip`, `SHA256SUMS` and `SOURCE-COMMIT.txt` are also provided.
 The Windows-tested source and executable from `4c5c662` are integrated.
