@@ -22,15 +22,17 @@ func (s *stringsFlag) String() string     { return strings.Join(*s, ", ") }
 func (s *stringsFlag) Set(v string) error { *s = append(*s, v); return nil }
 
 type options struct {
-	At        time.Time
-	Prompt    string
-	CD        string
-	AddDirs   stringsFlag
-	Model     string
-	Codex     string
-	NoApprove bool
-	Headless  bool
-	Close     bool
+	At         time.Time
+	Prompt     string
+	CD         string
+	AddDirs    stringsFlag
+	Model      string
+	Codex      string
+	NoApprove  bool
+	Headless   bool
+	Close      bool
+	NewConsole bool
+	Resume     string
 }
 
 func parseOptions(args []string, now time.Time, out io.Writer) (options, error) {
@@ -38,7 +40,7 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	var at, promptFile string
 	f := flag.NewFlagSet("codex-at", flag.ContinueOnError)
 	f.SetOutput(out)
-	f.StringVar(&at, "at", "", "Required local HH:mm[:ss] or YYYY-MM-DDTHH:mm[:ss]")
+	f.StringVar(&at, "at", "", "Local HH:mm[:ss] or YYYY-MM-DDTHH:mm[:ss]")
 	f.StringVar(&promptFile, "prompt-file", "", "Read the prompt from a UTF-8 file (optional BOM)")
 	f.StringVar(&o.CD, "cd", "", "Working directory (default: current directory)")
 	f.Var(&o.AddDirs, "add-dir", "Additional directory (repeatable)")
@@ -46,37 +48,59 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	f.StringVar(&o.Codex, "codex", "", "Codex executable (.exe or .cmd on Windows; default: PATH lookup)")
 	f.BoolVar(&o.NoApprove, "no-approve-for-me", false, "Omit the default --approve-for-me option")
 	f.BoolVar(&o.Headless, "headless", false, "Run codex exec with the prompt on stdin")
+	f.StringVar(&o.Resume, "resume", "", "Resume a Codex session ID and send exactly resume (default: start now)")
+	f.BoolVar(&o.NewConsole, "new-console", false, "Open a dedicated Windows console instead of inheriting the current terminal")
 	f.BoolVar(&o.Close, "close-on-exit", false, "Close the dedicated console after Codex exits")
 	f.Usage = func() {
-		fmt.Fprintln(out, "Usage: codex-at --at TIME [options] -- \"prompt\"\n       codex-at --at TIME [options] --prompt-file FILE\n\nPlace options before the single prompt argument. Ctrl+C cancels while waiting.")
+		fmt.Fprintln(out, "Usage: codex-at --at TIME [options] -- \"prompt\"\n       codex-at --at TIME [options] --prompt-file FILE\n       codex-at --resume SESSION_ID [--at TIME] [options]\n\nPlace options before the single prompt argument. Ctrl+C cancels while waiting.")
 		f.PrintDefaults()
 	}
 	if err := f.Parse(args); err != nil {
 		return o, err
 	}
-	if at == "" {
-		return o, errors.New("--at is required")
+	resumeSet := false
+	f.Visit(func(v *flag.Flag) {
+		if v.Name == "resume" {
+			resumeSet = true
+		}
+	})
+	if resumeSet && (strings.TrimSpace(o.Resume) == "" || o.Resume == "-" || !utf8.ValidString(o.Resume) || strings.ContainsAny(o.Resume, "\x00\r\n")) {
+		return o, errors.New("--resume requires a nonempty Codex session ID")
 	}
 	var err error
-	o.At, err = parseAt(at, now)
-	if err != nil {
-		return o, err
-	}
-	if (promptFile != "" && f.NArg() != 0) || (promptFile == "" && f.NArg() != 1) {
-		return o, errors.New("provide exactly one prompt argument or --prompt-file")
-	}
-	if promptFile != "" {
-		p, err := filepath.Abs(promptFile)
+	if at == "" {
+		if !resumeSet {
+			return o, errors.New("--at is required for a new task")
+		}
+		o.At = now
+	} else {
+		o.At, err = parseAt(at, now)
 		if err != nil {
 			return o, err
 		}
-		b, err := os.ReadFile(p)
-		if err != nil {
-			return o, fmt.Errorf("read prompt: %w", err)
+	}
+	if resumeSet {
+		if promptFile != "" || f.NArg() != 0 {
+			return o, errors.New("--resume cannot be combined with a prompt or --prompt-file")
 		}
-		o.Prompt = strings.TrimPrefix(string(b), "\ufeff")
+		o.Prompt = "resume"
 	} else {
-		o.Prompt = f.Arg(0)
+		if (promptFile != "" && f.NArg() != 0) || (promptFile == "" && f.NArg() != 1) {
+			return o, errors.New("provide exactly one prompt argument or --prompt-file")
+		}
+		if promptFile != "" {
+			p, err := filepath.Abs(promptFile)
+			if err != nil {
+				return o, err
+			}
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return o, fmt.Errorf("read prompt: %w", err)
+			}
+			o.Prompt = strings.TrimPrefix(string(b), "\ufeff")
+		} else {
+			o.Prompt = f.Arg(0)
+		}
 	}
 	if !utf8.ValidString(o.Prompt) || strings.ContainsRune(o.Prompt, 0) {
 		return o, errors.New("prompt must be valid UTF-8 without NUL")
@@ -160,7 +184,7 @@ func run(args []string) int {
 	fmt.Fprintf(os.Stderr, "Scheduled for %s (%s). Keep this timer open; Ctrl+C cancels.\n", o.At.Format(time.RFC3339), o.At.Location())
 	code, err := schedule(ctx, wallClock{}, o.At, func() int {
 		stop()
-		if o.Headless {
+		if o.Headless || !o.NewConsole {
 			return runCodex(o, nil)
 		}
 		return launchConsole(o)

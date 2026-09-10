@@ -7,9 +7,52 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 )
+
+func TestPrepareConsole(t *testing.T) {
+	for _, f := range []*os.File{os.Stdin, os.Stdout} {
+		var mode uint32
+		ok, _, _ := syscall.NewLazyDLL("kernel32.dll").NewProc("GetConsoleMode").Call(f.Fd(), uintptr(unsafe.Pointer(&mode)))
+		if ok == 0 {
+			t.Skip("standard streams are not attached to a console")
+		}
+	}
+	inputBefore, outputBefore := testConsoleCodePages()
+	if inputBefore == 0 || outputBefore == 0 {
+		t.Skip("test process has no console")
+	}
+	restore, err := prepareConsole()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restore()
+	inputUTF8, outputUTF8 := testConsoleCodePages()
+	if inputUTF8 != 65001 || outputUTF8 != 65001 {
+		t.Fatalf("UTF-8 code pages = input %d, output %d", inputUTF8, outputUTF8)
+	}
+	restore()
+	inputAfter, outputAfter := testConsoleCodePages()
+	if inputAfter != inputBefore || outputAfter != outputBefore {
+		t.Fatalf("code pages not restored: input %d -> %d, output %d -> %d", inputBefore, inputAfter, outputBefore, outputAfter)
+	}
+}
+
+func testConsoleCodePages() (uint32, uint32) {
+	kernel := syscall.NewLazyDLL("kernel32.dll")
+	input, _, _ := kernel.NewProc("GetConsoleCP").Call()
+	if input == 0 {
+		return 0, 0
+	}
+	output, _, _ := kernel.NewProc("GetConsoleOutputCP").Call()
+	if output == 0 {
+		return 0, 0
+	}
+	return uint32(input), uint32(output)
+}
 
 func TestPromptDirectoryACL(t *testing.T) {
 	dir, err := promptTempDir()
@@ -120,6 +163,9 @@ func TestConsoleLaunchAndCleanup(t *testing.T) {
 		b, err := os.ReadFile(report)
 		var got observation
 		if err == nil && json.Unmarshal(b, &got) == nil && got.File != "" {
+			if got.InputCP != 65001 || got.OutputCP != 65001 {
+				t.Fatalf("child code pages: %d/%d", got.InputCP, got.OutputCP)
+			}
 			if got.Prompt != o.Prompt {
 				t.Fatal("console prompt changed")
 			}
@@ -152,5 +198,50 @@ func TestCmdExitCode(t *testing.T) {
 	t.Setenv("CODEX_AT_TEST_FAIL", "1")
 	if code := runCodex(o, nil); code != 23 {
 		t.Fatalf("cmd exit: %d", code)
+	}
+}
+
+func TestCmdResume(t *testing.T) {
+	o := helperOptions(t)
+	data, err := os.ReadFile(o.Codex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(o.CD, "fake.exe"), data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	o.Codex = filepath.Join(o.CD, "fake.cmd")
+	if err := os.WriteFile(o.Codex, []byte("@echo off\r\n\"%~dp0fake.exe\" %*\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	o.Resume = "01912345-6789-7abc-8def-0123456789ab"
+	o.Prompt = "resume"
+	for _, headless := range []bool{false, true} {
+		o.Headless = headless
+		cmd, cleanup, err := prepare(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer cleanup()
+		var out, stderr bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("%v: %s", err, stderr.String())
+		}
+		var got observation
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		prompt := got.Prompt
+		if headless {
+			prompt = got.Input
+		}
+		if prompt != "resume" || got.File != "" {
+			t.Fatalf("changed resume: %+v", got)
+		}
+		if len(got.Args) < 4 || got.Args[len(got.Args)-3] != "--" || got.Args[len(got.Args)-2] != o.Resume || got.Args[len(got.Args)-4] != "resume" {
+			t.Fatalf("changed session: %q", got.Args)
+		}
 	}
 }

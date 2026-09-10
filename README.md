@@ -8,11 +8,15 @@ also supported by the source. [日本語](README.ja.md)
 Download the [Windows x64 ZIP](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/codex-at-windows-x64.zip)
 and [checksums](https://github.com/yasuyuki/codex-at/releases/download/v0.1.0-preview.1/SHA256SUMS)
 from the [release page](https://github.com/yasuyuki/codex-at/releases/tag/v0.1.0-preview.1).
-Extract the ZIP before following the usage examples below.
+Extract the ZIP before use. The changes below (`--resume`, inherited terminal,
+`--new-console`, UTF-8 console setup) are in the current source/build and are
+not included in that initial release ZIP.
 
 Windows 11 native automated tests and five basic interactive steps have passed.
 One harmless shell escalation was automatically reviewed and allowed in headless
-mode. Windows 10, actual sleep/resume, Ctrl+C, automatic console closing and
+mode. The user confirmed Windows 10 task execution and saved-file results on
+2026-09-10, but reported unreadable Japanese console output. Actual sleep/resume,
+Ctrl+C, automatic console closing and
 other scenarios remain unverified. See [verification](docs/VERIFICATION.md) for
 the exact tested scope and remaining checks.
 
@@ -41,16 +45,33 @@ Windows executable. Interactive Codex uses the current terminal on those OSes.
 
 | Option | Meaning |
 | --- | --- |
-| `--at TIME` | Required `HH:mm[:ss]` or `YYYY-MM-DDTHH:mm[:ss]`, local time |
-| `"prompt"` / `--prompt-file FILE` | Exactly one; put the single prompt argument after all options |
+| `--at TIME` | Required for new tasks; optional with `--resume`. `HH:mm[:ss]` or `YYYY-MM-DDTHH:mm[:ss]`, local time |
+| `"prompt"` / `--prompt-file FILE` | Exactly one for new tasks; unavailable with `--resume`; put the single prompt argument after all options |
 | `--cd DIR` | Working directory; default is the directory where the timer was started |
 | `--add-dir DIR` | Additional directory; repeatable |
 | `--model MODEL` | Only supplied to Codex when specified; otherwise Codex selects the model |
 | `--codex PATH` | Executable to run; default resolves `codex` from PATH at reservation time |
 | `--no-approve-for-me` | Omit the default `--approve-for-me` option |
 | `--headless` | Run `codex exec`; send the prompt on stdin |
+| `--resume ID` | Resume a saved Codex session and send exactly `resume`; immediately unless `--at` is specified |
+| `--new-console` | Open a separate Windows console; default uses the caller's terminal |
 | `--close-on-exit` | Close the Windows dedicated console after Codex exits |
 | `--help` | Show English help |
+
+To resume a task stopped by a usage limit, use its full Codex session ID (the
+hash shown by Codex), under the same account and Codex home that saved it:
+
+```powershell
+$sessionId = Read-Host 'Codex session ID'
+.\dist\codex-at.exe --resume $sessionId
+```
+
+Add `--at 23:30` to wait for a limit reset, or `--headless` for `codex exec
+resume`. No new prompt is needed or accepted: the message is exactly `resume`,
+including with Windows `.cmd` shims. The ID is passed to Codex directly; this
+timer has no separate job database and does not recover missing session history
+or bypass a usage limit. `--cd` retains its usual current-directory default;
+run from the original project or supply that project's directory explicitly.
 
 Time-only input selects the next occurrence (an equal/past clock time means
 tomorrow). A full date must be in the future. Invalid dates and local times
@@ -80,20 +101,29 @@ or sandbox policy to recover. Configured model/authentication/settings are
 inherited; the default approval flag requests Codex's automatic review behavior.
 Use `--no-approve-for-me` to leave that option unset.
 
-On Windows, interactive mode starts this same executable in a new console, then
-runs Codex there with `--no-alt-screen` to preserve scrollback. You can continue
-the conversation after the initial task. After Codex itself exits, the window
-waits for any key unless `--close-on-exit` was specified. The timer exits after
-receiving the child's process-start result, not after the task finishes. A timer
-exit code of zero means that process creation succeeded, not that Codex accepted
-the flags, authenticated, or completed the task. Later errors remain in the
-Codex console. For `.cmd`, process creation refers to the command interpreter.
+Interactive mode uses the caller's terminal on every OS, with
+`--no-alt-screen` to retain scrollback. On Windows this preserves the console
+or Windows Terminal tab opened from PowerShell/cmd; it does not start a new
+shell or guess its executable from parent processes. Codex's own tool shell
+continues to follow its Codex configuration. You can keep chatting after the
+initial task. The timer waits for Codex and returns its exit code.
 
-Headless mode inherits stdout/stderr and returns Codex's exit code (also through
-`.cmd`). `--close-on-exit` is accepted and has no effect in headless mode.
-On Linux/macOS interactive mode runs in the caller's terminal and returns
-Codex's exit code; it does not open a window or wait for a key. `--close-on-exit`
-has no effect there either. Input errors use exit 2; launch errors use exit 1.
+For an attached Windows console, the timer temporarily selects UTF-8 input and
+output code pages before starting Codex and restores the previous values when
+Codex exits. Redirected streams are left unchanged. This corrects the legacy
+code-page mismatch; visible Japanese glyphs still require a suitable console font.
+
+Use `--new-console` to select the previous dedicated-window behavior on Windows.
+That window stays open after Codex exits until a key is pressed, unless
+`--close-on-exit` is set. The parent timer exits after process creation is
+acknowledged; zero then means only that launch succeeded, not authentication or
+task completion. With a `.cmd` shim this acknowledges the command interpreter.
+Later errors remain in the dedicated console.
+
+Headless mode inherits stdout/stderr and returns Codex's exit code.
+`--new-console` has no effect in headless mode or on Linux/macOS.
+`--close-on-exit` only affects a dedicated Windows console; the caller's terminal
+is never closed. Input errors use exit 2; launch errors use exit 1.
 
 Native Windows `.exe` files run directly. Trusted `.cmd` shims run through the
 Windows system `cmd.exe`, with delayed expansion disabled and arguments passed
@@ -102,7 +132,7 @@ re-evaluating them as shell code (the standard npm `%*` forwarding pattern).
 Other Windows script types are not accepted. No generated launch script or
 private environment manager is needed.
 
-Interactive `.cmd` prompts and interactive prompts too large for the Windows
+New-task interactive `.cmd` prompts and interactive prompts too large for the Windows
 command-line budget use a private, unique system-temporary directory containing
 `prompt.txt`. Windows creates it with a protected current-user DACL and does not
 inherit additional permissions from TEMP. The original UTF-8 contents are preserved. Codex receives an

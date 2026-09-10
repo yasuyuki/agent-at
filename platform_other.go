@@ -17,3 +17,5 @@ func consoleChild([]string) int {
 	fmt.Fprintln(os.Stderr, "codex-at: internal console mode is Windows-only")
 	return 2
 }
+
+func prepareConsole() (func(), error) { return func() {}, nil }
