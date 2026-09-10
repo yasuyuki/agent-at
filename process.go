@@ -11,7 +11,33 @@ import (
 	"unicode/utf16"
 )
 
-func codexArgs(o options, prompt string) []string {
+func agentArgs(o options, prompt string) []string {
+	if o.Agent == "claude" {
+		var args []string
+		if o.Headless {
+			args = append(args, "--print")
+		}
+		if !o.NoApprove {
+			args = append(args, "--permission-mode", "auto")
+		}
+		if len(o.AddDirs) != 0 {
+			args = append(args, "--add-dir")
+			args = append(args, o.AddDirs...)
+		}
+		if o.Model != "" {
+			args = append(args, "--model", o.Model)
+		}
+		if o.Resume != "" {
+			args = append(args, "--resume="+o.Resume)
+		}
+		args = append(args, "--")
+		// Claude print mode reads stdin when there is no positional prompt.
+		// A literal "-" would become part of the user's request.
+		if !o.Headless {
+			args = append(args, prompt)
+		}
+		return args
+	}
 	var args []string
 	if o.Headless {
 		args = append(args, "exec")
@@ -44,18 +70,18 @@ func prepare(o options) (*exec.Cmd, func(), error) {
 		// Stay below cmd.exe's 8191-character limit for shims, and the Win32
 		// 32767 UTF-16 command-line limit. Keep all interactive prompts in a file
 		// for .cmd; use a file for .exe when its complete argument line is long.
-		n := len(utf16.Encode([]rune(o.Codex))) + 3
-		for _, a := range codexArgs(o, prompt) {
+		n := len(utf16.Encode([]rune(o.Executable))) + 3
+		for _, a := range agentArgs(o, prompt) {
 			n += 2*len(utf16.Encode([]rune(a))) + 3
 		}
-		if strings.EqualFold(filepath.Ext(o.Codex), ".cmd") || n >= 32767 {
+		if strings.EqualFold(filepath.Ext(o.Executable), ".cmd") || n >= 32767 {
 			dir, err := promptTempDir()
 			if err != nil {
 				return nil, cleanup, err
 			}
 			cleanup = func() {
 				if err := os.RemoveAll(dir); err != nil {
-					fmt.Fprintln(os.Stderr, "codex-at: remove temporary prompt:", err)
+					fmt.Fprintln(os.Stderr, "agent-at: remove temporary prompt:", err)
 				}
 			}
 			path := filepath.Join(dir, "prompt.txt")
@@ -67,7 +93,7 @@ func prepare(o options) (*exec.Cmd, func(), error) {
 			prompt = "Read the UTF-8 file at " + path + " and carry out its contents as my request."
 		}
 	}
-	cmd, err := platformCommand(o.Codex, codexArgs(o, prompt))
+	cmd, err := platformCommand(o.Executable, agentArgs(o, prompt))
 	if err != nil {
 		cleanup()
 		return nil, func() {}, err
@@ -83,18 +109,18 @@ func prepare(o options) (*exec.Cmd, func(), error) {
 }
 
 // started reports process creation, not completion of the prompt or authentication.
-func runCodex(o options, started func(error)) int {
+func runAgent(o options, started func(error)) int {
 	restore, consoleErr := prepareConsole()
 	defer restore()
 	if consoleErr != nil {
 		if started != nil {
 			started(consoleErr)
 		}
-		fmt.Fprintln(os.Stderr, "codex-at:", consoleErr)
+		fmt.Fprintln(os.Stderr, "agent-at:", consoleErr)
 		return 1
 	}
 	if !o.Headless {
-		// Catch Ctrl+C in the supervisor while Codex handles the same console /
+		// Catch Ctrl+C in the supervisor while the agent handles the same console /
 		// terminal event. Keep the supervisor alive for cleanup and exit hold.
 		// Ignore is unsuitable: Windows can inherit it into the child.
 		interrupts := make(chan os.Signal, 1)
@@ -110,7 +136,7 @@ func runCodex(o options, started func(error)) int {
 		started(err)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "codex-at:", err)
+		fmt.Fprintln(os.Stderr, "agent-at:", err)
 		return 1
 	}
 	err = cmd.Wait()
@@ -119,9 +145,9 @@ func runCodex(o options, started func(error)) int {
 	}
 	var e *exec.ExitError
 	if errors.As(err, &e) {
-		fmt.Fprintf(os.Stderr, "codex-at: Codex exited with code %d\n", e.ExitCode())
+		fmt.Fprintf(os.Stderr, "agent-at: agent exited with code %d\n", e.ExitCode())
 		return e.ExitCode()
 	}
-	fmt.Fprintln(os.Stderr, "codex-at:", err)
+	fmt.Fprintln(os.Stderr, "agent-at:", err)
 	return 1
 }
