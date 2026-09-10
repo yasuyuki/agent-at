@@ -42,7 +42,7 @@ func promptTempDir() (string, error) {
 		if _, err := rand.Read(random[:]); err != nil {
 			return "", err
 		}
-		dir := filepath.Join(os.TempDir(), "codex-at-"+hex.EncodeToString(random[:]))
+		dir := filepath.Join(os.TempDir(), "agent-at-"+hex.EncodeToString(random[:]))
 		path, err := syscall.UTF16PtrFromString(dir)
 		if err != nil {
 			return "", err

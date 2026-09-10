@@ -24,7 +24,7 @@ func platformCommand(path string, args []string) (*exec.Cmd, error) {
 			line += " " + syscall.EscapeArg(a)
 		}
 		if len(utf16.Encode([]rune(line))) >= 32767 {
-			return nil, fmt.Errorf("Codex command line exceeds the Windows limit; shorten paths or reduce additional directories")
+			return nil, fmt.Errorf("Agent command line exceeds the Windows limit; shorten paths or reduce additional directories")
 		}
 		return cmd, nil
 	}
@@ -36,7 +36,7 @@ func platformCommand(path string, args []string) (*exec.Cmd, error) {
 	env := os.Environ()
 	// Replace, rather than duplicate, inherited names (Windows is case-insensitive).
 	for i := len(env) - 1; i >= 0; i-- {
-		if strings.HasPrefix(strings.ToUpper(env[i]), "CODEX_AT_ARG_") {
+		if strings.HasPrefix(strings.ToUpper(env[i]), "AGENT_AT_ARG_") {
 			env = append(env[:i], env[i+1:]...)
 		}
 	}
@@ -53,14 +53,14 @@ func platformCommand(path string, args []string) (*exec.Cmd, error) {
 		if i > 0 {
 			quoted += strings.Repeat("\\", len(value)-len(strings.TrimRight(value, "\\")))
 		}
-		name := fmt.Sprintf("CODEX_AT_ARG_%d", i)
+		name := fmt.Sprintf("AGENT_AT_ARG_%d", i)
 		env = append(env, name+"="+quoted)
 		refs = append(refs, "\"%"+name+"%\"")
 		expanded += len(utf16.Encode([]rune(quoted))) + 3
 	}
 	line := strings.Join(refs, " ")
 	if expanded+len(shell)+32 >= 8191 || len(line)+len(shell)+32 >= 8191 {
-		return nil, fmt.Errorf("Codex .cmd command line exceeds cmd.exe's limit; shorten paths or use a native .exe")
+		return nil, fmt.Errorf("Agent .cmd command line exceeds cmd.exe's limit; shorten paths or use a native .exe")
 	}
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: syscall.EscapeArg(shell) + " /d /v:off /s /c \"" + line + "\""}
@@ -69,7 +69,7 @@ func platformCommand(path string, args []string) (*exec.Cmd, error) {
 
 type launchResult struct{ Error string }
 
-// prepareConsole selects UTF-8 for an interactive Windows console while Codex
+// prepareConsole selects UTF-8 for an interactive Windows console while the agent
 // runs. Console code pages belong to the console rather than this process, so
 // callers must invoke the returned function when the session is complete.
 func prepareConsole() (func(), error) {
@@ -171,7 +171,7 @@ func launchConsole(o options) int {
 	}
 	return 0
 }
-func launchError(err error) int { fmt.Fprintln(os.Stderr, "codex-at:", err); return 1 }
+func launchError(err error) int { fmt.Fprintln(os.Stderr, "agent-at:", err); return 1 }
 
 func consoleChild(args []string) int {
 	if len(args) != 2 {
@@ -189,7 +189,7 @@ func consoleChild(args []string) int {
 	result := os.NewFile(handles[1], "result")
 	defer input.Close()
 	defer result.Close()
-	// Do not leak protocol handles to Codex; EOF must also report child failures.
+	// Do not leak protocol handles to the agent; EOF must also report child failures.
 	for _, h := range handles {
 		if err := syscall.SetHandleInformation(syscall.Handle(h), syscall.HANDLE_FLAG_INHERIT, 0); err != nil {
 			return launchError(err)
@@ -224,11 +224,11 @@ func consoleChild(args []string) int {
 	os.Stdin = in
 	os.Stdout = out
 	os.Stderr = out
-	code := runCodex(o, report)
+	code := runAgent(o, report)
 	if !o.Close {
-		fmt.Fprintf(out, "\nCodex exited (code %d). Press any key to close this window.\n", code)
+		fmt.Fprintf(out, "\nAgent exited (code %d). Press any key to close this window.\n", code)
 		if err := waitKey(in); err != nil {
-			fmt.Fprintln(out, "codex-at: wait for key:", err)
+			fmt.Fprintln(out, "agent-at: wait for key:", err)
 		}
 	}
 	return code
@@ -247,7 +247,7 @@ func waitKey(in *os.File) error {
 		return err
 	}
 	defer set.Call(in.Fd(), uintptr(mode))
-	// Discard keys left over from the just-ended Codex session.
+	// Discard keys left over from the just-ended agent session.
 	ok, _, err = kernel.NewProc("FlushConsoleInputBuffer").Call(in.Fd())
 	if ok == 0 {
 		return err

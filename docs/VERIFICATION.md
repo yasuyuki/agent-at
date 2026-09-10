@@ -1,12 +1,54 @@
 # Verification and remaining acceptance
 
-Status as of 2026-09-10: the published **v0.1.0-preview.1** remains the
-initial release. The current source/build adds explicit session resume, inherits
-the caller's terminal by default and initializes Windows console UTF-8.
-The user confirmed Windows 10 job execution and successful saved-file recovery,
-but reported Japanese console output was unreadable. This is not confirmation
-of the new display fix. Full Windows acceptance remains incomplete; historical
-Windows 11 results below apply to the earlier build.
+Status as of 2026-09-10: the current command/build is **agent-at**, with Codex
+and Claude Code selected by `--agent`. The repository URL remains `codex-at`.
+The published **codex-at v0.1.0-preview.1** ZIP is an earlier build and has not
+been replaced. Historical Windows results below apply to that earlier build,
+not to native acceptance of the new Claude adapter or the UTF-8 display fix.
+
+## Agent selection and Claude Code (2026-09-10)
+
+Contract: rename the command/executable to `agent-at` / `dist/agent-at.exe`;
+select `codex` (default) or `claude` with `--agent`. Both must support scheduled
+new tasks, exact `resume` messages to a selected saved session, stdin in
+headless mode, UTF-8 prompt files, model/additional directories, process exit
+codes and existing terminal/console behavior. `--agent-path` and
+`--no-auto-approve` replace the Codex-specific timer option names. Release
+history and the repository URL are unchanged.
+
+Implementation: Codex uses its existing CLI arguments; Claude uses `--print`
+for headless stdin, `--resume=ID` for the saved conversation, process cwd for
+`--cd`, and `--permission-mode auto` by default. Opt-out leaves the selected
+agent's approval configuration unchanged. No permission-bypass flag is added.
+Claude's own interactive renderer is retained. CLI semantics were checked
+against installed Claude Code 2.1.267 and its
+[official reference](https://code.claude.com/docs/en/cli-reference).
+
+Executed on Linux using the existing Go 1.27.1 toolchain:
+
+- `go test -race ./...` and `go vet ./...`: passed. Both agents' fake processes
+  receive Japanese, multiline/long prompts, cwd, model/additional-directory
+  arguments, approval choice and resume input. Agent selection resolves the
+  corresponding executable; unsupported agents are rejected before waiting.
+- Windows amd64 vet, test cross-compilation and `dist/agent-at.exe` cross-build:
+  passed. `.cmd` round-trip and resume tests cover both agents but have **not
+  executed on native Windows** for this update.
+- macOS arm64 cross-build: passed; not a native execution test.
+- Real Claude Code 2.1.267: a disposable saved conversation received a marker
+  without tools; `agent-at --agent claude --headless --resume ID` sent only
+  `resume` and returned that remembered marker, exit 0. A separate scheduled
+  new request through the timer also returned its exact marker, exit 0.
+  Both selected the default automatic-review option; no tool approval was
+  exercised, so this does not prove an actual auto-mode approval decision.
+
+Remaining: Claude interactive rendering, actual Claude tool approvals and
+Windows native/desktop execution with `.exe` and installed `.cmd`. The prior
+Windows 10 job success is user-confirmed for Codex, with Japanese mojibake
+reported. The new console fix and continuation after real quota recovery
+remain unverified on that desktop. Existing checks below retain their stated
+historical scope. Current binaries, temporary directories and build commands
+use `agent-at`; historical commands naming `codex-at` refer to their recorded
+older build. Use the current README for executable names and options.
 
 ## Resume and terminal update (2026-09-10)
 
