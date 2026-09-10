@@ -4,13 +4,12 @@ Run an installed, authenticated coding agent once at a local time. The timer nee
 external runtime. Windows 10/11 x64 is the primary target; Linux and macOS are
 also supported by the source. [日本語](README.ja.md)
 
-**Legacy v0.1.0-preview.1 — initial Codex-only preview.**
-The [legacy Windows x64 ZIP](https://github.com/yasuyuki/agent-at/releases/download/v0.1.0-preview.1/codex-at-windows-x64.zip)
-and [checksums](https://github.com/yasuyuki/agent-at/releases/download/v0.1.0-preview.1/SHA256SUMS)
-are available from the [release page](https://github.com/yasuyuki/agent-at/releases/tag/v0.1.0-preview.1).
-That ZIP is a legacy `codex-at` artifact; extract it before use. The changes below (the `agent-at` name, Claude selection, `--resume`, inherited
-terminal, `--new-console` and UTF-8 console setup) are in the current source/build and are
-not included in that initial release ZIP.
+**v0.2.0** — Codex and Claude Code scheduling, session resume, and inherited terminals.
+Download the [Windows x64 ZIP](https://github.com/yasuyuki/agent-at/releases/download/v0.2.0/agent-at-windows-x64.zip)
+and [checksums](https://github.com/yasuyuki/agent-at/releases/download/v0.2.0/SHA256SUMS)
+from the [release page](https://github.com/yasuyuki/agent-at/releases/tag/v0.2.0).
+Extract the ZIP before use; the executable is `dist/agent-at.exe`.
+The earlier `codex-at` preview remains available in the release history.
 
 For the earlier Codex build, Windows 11 native automated tests and five basic
 interactive steps passed.

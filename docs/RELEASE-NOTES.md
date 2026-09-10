@@ -1,36 +1,59 @@
-# codex-at v0.1.0-preview.1 — Initial preview
+# agent-at v0.2.0
 
-This is the first prerelease of [codex-at](https://github.com/yasuyuki/agent-at).
-Download `codex-at-windows-x64.zip` and extract it to use the Windows executable.
-`codex-at-source.zip`, `SHA256SUMS` and `SOURCE-COMMIT.txt` are also provided.
-The Windows-tested source and executable from `4c5c662` are integrated.
+Schedule Codex or Claude Code to run once at a local time, or resume a saved
+conversation immediately or at a scheduled time. This release renames the
+command and repository from `codex-at` to `agent-at`.
 
-Schedule an installed, authenticated Codex to run once at a local time.
-The Windows x64 timer is a standalone executable and needs no external runtime.
-Codex itself retains its normal installation and authentication requirements.
+## Changes
 
-- Interactive Windows sessions open in a dedicated console with scrollback.
-- Headless sessions use `codex exec`, with the request on stdin and the exit
-  status returned to the caller.
-- Requests can come from an argument or a UTF-8 file. Working directory,
-  additional directories and model selection are configurable.
-- `--approve-for-me` is passed by default and can be omitted explicitly.
-- Linux and macOS can build from source and use the current terminal.
-- English and Japanese documentation and an MIT license are included.
+- Select Codex (default) or Claude Code with `--agent codex|claude`.
+- Resume a saved conversation with `--resume ID` and send exactly `resume`.
+  Omit `--at` to resume immediately, or supply it to wait for the chosen time.
+- Inherit the caller's terminal by default. On Windows, `--new-console` selects
+  the previous dedicated-window behavior.
+- Select UTF-8 console input/output on Windows while the agent runs, then
+  restore the original code pages to address Japanese mojibake.
+- Use `--headless` for `codex exec` or `claude --print`, with the request on
+  stdin. UTF-8 prompt files, additional directories and model selection remain
+  supported.
 
-## Verification limits
+## Migration
 
-Windows 11 native tests and five user-observed interactive steps passed: initial
-response, continued conversation, normal exit with retained history, and arrow-key
-closure. Headless automatic review allowed one harmless shell escalation without
-human interaction. This does not establish other review boundaries or denial
-handling. Temporary request directories use a protected current-user Windows DACL.
+The Windows executable is now `dist/agent-at.exe`. Replace the timer's
+`--codex` option with `--agent-path`, and `--no-approve-for-me` with
+`--no-auto-approve`. The old option names are not aliases.
 
-Windows 10, actual sleep/resume, Ctrl+C, automatic console closing, long interactive
-file access and integration with an installed `.cmd` shim remain unverified.
-The native automated `.cmd` tests use a synthetic forwarding shim. See the
-verification record for the complete scope; this is a preview, not full acceptance.
+Codex requests `--approve-for-me` by default; Claude requests
+`--permission-mode auto`. Opting out leaves the selected agent's approval
+configuration unchanged. No permission-bypass fallback is added. Both agents
+still require their own installation and authentication.
 
-Reservations exist only while the timer is running. There is no persistence,
-wake-up service, retry or recurring schedule. Forced termination can leave
-request text in temporary files. The Windows executable is unsigned.
+## Downloads
+
+- `agent-at-windows-x64.zip`: standalone Windows x64 timer and documentation.
+  Extract it before running `dist/agent-at.exe`.
+- `agent-at-source.zip`: source at the release commit, including the tracked
+  Windows executable.
+- `SHA256SUMS`: checksums for both ZIPs and `SOURCE-COMMIT.txt`.
+- `SOURCE-COMMIT.txt`: the exact source commit used for this release.
+
+See the [English README](https://github.com/yasuyuki/agent-at/blob/v0.2.0/README.md)
+or [Japanese README](https://github.com/yasuyuki/agent-at/blob/v0.2.0/README.ja.md)
+for usage and build instructions.
+
+## Verification and limitations
+
+Linux race tests and vet, Windows vet/test cross-compilation, and Windows/macOS
+cross-builds pass. Real Codex session resume and Claude scheduled execution and
+same-session resume passed on Linux. Earlier Windows 11 native tests and basic
+Codex interactions passed; the user also confirmed earlier Windows 10 job
+execution and saved-file recovery.
+
+The new UTF-8 display fix and Claude behavior have not been verified on a
+Windows desktop. Claude interactive behavior and actual auto-mode tool approvals,
+continuation after quota recovery, and other outstanding scenarios retain the
+limits in the [verification record](https://github.com/yasuyuki/agent-at/blob/v0.2.0/docs/VERIFICATION.md).
+Cross-compilation is not native execution. The Windows executable is unsigned.
+
+Reservations exist only while the timer runs. There is no persistence, wake-up
+service, retry or recurring schedule. This release does not bypass usage limits.

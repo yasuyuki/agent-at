@@ -5,12 +5,11 @@
 ソースは Linux／macOS でも利用でき、対話型は現在のターミナルで動作します。
 [English](README.md)
 
-**v0.1.0-preview.1 — Codex 専用の旧プレビュー版。**
-[旧 Windows x64 ZIP](https://github.com/yasuyuki/agent-at/releases/download/v0.1.0-preview.1/codex-at-windows-x64.zip)と
-[チェックサム](https://github.com/yasuyuki/agent-at/releases/download/v0.1.0-preview.1/SHA256SUMS)は
-[リリースページ](https://github.com/yasuyuki/agent-at/releases/tag/v0.1.0-preview.1)から取得できます。この ZIP は旧 `codex-at` 成果物です。
-ZIP は展開して使用します。以下の `agent-at` への改名、Claude 選択、`--resume`、起動元ターミナルの継承、
-`--new-console`、UTF-8 対策は現在のソース・ビルドの機能であり、初回リリース ZIP には含まれません。
+**v0.2.0** — Codex／Claude Code の予約、会話再開、起動元ターミナルの継承に対応。
+[Windows x64 ZIP](https://github.com/yasuyuki/agent-at/releases/download/v0.2.0/agent-at-windows-x64.zip)と
+[チェックサム](https://github.com/yasuyuki/agent-at/releases/download/v0.2.0/SHA256SUMS)は
+[リリースページ](https://github.com/yasuyuki/agent-at/releases/tag/v0.2.0)から取得できます。
+ZIP を展開して `dist/agent-at.exe` を使用します。旧 `codex-at` プレビューはリリース履歴に残しています。
 
 旧 Codex 版の Windows 11 ネイティブ自動試験と基本対話5手順は確認済みです。ヘッドレスでは、
 無害なシェル操作1件の自動レビュー・許可も確認しました。2026-09-10 に本人が Windows 10 の
