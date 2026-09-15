@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 )
@@ -95,7 +96,18 @@ func taskXML(spec taskSpec) (string, error) {
 
 func validateTaskXML(definition string, spec taskSpec) error {
 	var task xmlNode
-	if err := xml.Unmarshal([]byte(definition), &task); err != nil {
+	decoder := xml.NewDecoder(strings.NewReader(definition))
+	// RegisteredTask.XML is a COM string, already decoded by PowerShell and
+	// transported as JSON into this Go string. Its UTF-16 declaration describes
+	// the original COM representation, not the UTF-8 bytes read here. Do not
+	// decode those bytes as UTF-16 a second time, or relax XML validation.
+	decoder.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) {
+		if strings.EqualFold(charset, "UTF-16") {
+			return input, nil
+		}
+		return nil, fmt.Errorf("unsupported task XML encoding %q", charset)
+	}
+	if err := decoder.Decode(&task); err != nil {
 		return fmt.Errorf("parse task definition: %w", err)
 	}
 	if task.XMLName.Local != "Task" {

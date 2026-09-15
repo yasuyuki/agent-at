@@ -26,8 +26,8 @@ Windows desktop behavior remain unverified.
 
 The candidate for [Issue #3](https://github.com/yasuyuki/agent-at/issues/3)
 adds `--persist`, `--list`, and `--remove`. It depends on the unreleased wake
-change; the v0.2.0 download does **not** contain these options. Windows native
-acceptance is pending; see [verification](docs/VERIFICATION.md#persistent-jobs--issue-3).
+change; the v0.2.0 download does **not** contain these options. Initial Windows native acceptance failed; the repair awaits re-acceptance.
+See [verification](docs/VERIFICATION.md#persistent-jobs--issue-3).
 
 ```powershell
 .\dist\agent-at.exe --persist --wake --at 05:00

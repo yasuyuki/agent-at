@@ -1,11 +1,47 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestTaskXMLCOMStringEncodingDeclaration(t *testing.T) {
+	spec := testTaskSpec()
+	spec.Executable = `C:\日本語 & space\agent-at.exe`
+	spec.Directory = `C:\作業 & space`
+	body, err := taskXML(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, encoding := range []string{"UTF-16", "utf-16", "UTF-8"} {
+		definition := `<?xml version="1.0" encoding="` + encoding + `"?>` + body
+		// The real management boundary transports an already-decoded string
+		// through JSON, not raw UTF-16 file bytes.
+		wire, err := json.Marshal(map[string]any{"ok": true, "xml": definition})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var response struct {
+			XML string `json:"xml"`
+		}
+		if err = json.Unmarshal(wire, &response); err != nil {
+			t.Fatal(err)
+		}
+		if err = validateTaskXML(response.XML, spec); err != nil {
+			t.Fatalf("%s: %v", encoding, err)
+		}
+		altered := strings.Replace(response.XML, "<RunLevel>LeastPrivilege", "<RunLevel>HighestAvailable", 1)
+		if err = validateTaskXML(altered, spec); err == nil {
+			t.Fatal("encoding handling bypassed policy validation")
+		}
+	}
+	if err := validateTaskXML(`<?xml version="1.0" encoding="unknown"?>`+body, spec); err == nil {
+		t.Fatal("accepted unknown encoding")
+	}
+}
 
 func TestTaskCreateError(t *testing.T) {
 	err := errors.New("no")

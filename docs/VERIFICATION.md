@@ -52,6 +52,27 @@ PowerShell COM, Windows Job nesting or a desktop session.
 
 ### Windows native acceptance still required
 
+The [first Windows return](https://github.com/yasuyuki/agent-at/issues/3#issuecomment-5683729635)
+tested `f9eaff1` on Windows 11 x64 25H2, Go 1.27.1 and Node 26.5.0 in a
+non-elevated Medium-integrity owner session. Native vet/build passed, but
+the suite failed `TestWakeCmdEmptyArgsAndLiteral` and both actual Scheduler
+subtests failed XML read-back. The receiver cleaned both trial tasks/data.
+Native race could not run with the existing `CGO_ENABLED=0` setup; no toolchain
+installation is required merely to repeat that unavailable check.
+
+The repair accepts the UTF-16 declaration on an already-decoded COM XML string
+without decoding its JSON-transported UTF-8 bytes again. Unknown encodings and
+changed task policies still fail validation. See `TestTaskXMLCOMStringEncodingDeclaration`.
+Empty `.cmd` arguments now use literal `""` instead of an undefined environment
+reference; the existing native argv round-trip test remains the acceptance.
+The Scheduler test registers cleanup before registration, identifies its own
+records by the unique fixture paths even if no success message is produced,
+and retains fixture files on failure for recovery. It does not delete unrelated
+jobs or bypass public removal checks. The repair still needs native re-acceptance.
+
+Sources for the string boundary: [RegisteredTask.XML is a string](https://learn.microsoft.com/en-us/windows/win32/taskschd/registeredtask-xml)
+and [Go XML decoder charset handling](https://pkg.go.dev/encoding/xml#Decoder).
+
 Use a **native Windows standard-user session** with Go and the candidate source
 revision from Issue #3, preserving unrelated checkout changes. The existing
 Go commands in the README apply. From that checkout in PowerShell:

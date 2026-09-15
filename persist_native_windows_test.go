@@ -27,7 +27,19 @@ func TestPersistentTaskSchedulerNative(t *testing.T) {
 		t.Skip("set AGENT_AT_PERSIST_NATIVE=1 to run the Windows Task Scheduler integration test")
 	}
 	root := nativeRepositoryRoot(t)
-	bin := t.TempDir()
+	bin, err := os.MkdirTemp("", "agent-at-native-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("failed native test fixtures retained for recovery: %s", bin)
+			return
+		}
+		if err := os.RemoveAll(bin); err != nil {
+			t.Error(err)
+		}
+	})
 	app := filepath.Join(bin, "agent-at.exe")
 	nativeGoBuild(t, root, app, ".")
 	fake := filepath.Join(bin, "persist-agent.exe")
@@ -42,7 +54,10 @@ func TestPersistentTaskSchedulerNative(t *testing.T) {
 		return
 	}
 	t.Run("cmd", func(t *testing.T) {
-		dir := t.TempDir()
+		dir, err := os.MkdirTemp(bin, "cmd-")
+		if err != nil {
+			t.Fatal(err)
+		}
 		script := filepath.Join(dir, "persist-agent.js")
 		if err := os.WriteFile(script, []byte(`const fs=require('fs'); fs.appendFileSync('persist-agent-runs','run\n'); console.log('persist fixture stdout'); console.error('persist fixture stderr'); process.exit(23);`), 0600); err != nil {
 			t.Fatal(err)
@@ -87,7 +102,33 @@ func nativeGoBuild(t *testing.T, root, output, source string) {
 
 func nativePersistentJob(t *testing.T, app, agent, label string) {
 	t.Helper()
-	work := t.TempDir()
+	work, err := os.MkdirTemp(filepath.Dir(app), "work-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := openJobStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cleanupOnce sync.Once
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			ids, err := nativeFixtureJobIDs(store, app, agent, work)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			for _, id := range ids {
+				remove := exec.Command(app, "--remove", id)
+				if out, removeErr := remove.CombinedOutput(); removeErr != nil {
+					t.Errorf("remove own job %s: %v\n%s", id, removeErr, out)
+				}
+			}
+		})
+	}
+	// Register cleanup before invoking registration: read-back may fail after
+	// the OS task and payload already exist, without any success output/ID.
+	t.Cleanup(cleanup)
 	at := time.Now().Add(25 * time.Second).Format("2006-01-02T15:04:05")
 	cmd := exec.Command(app, "--persist", "--at", at, "--agent", "codex", "--agent-path", agent, "--cd", work, "native fixture "+label)
 	output, err := cmd.CombinedOutput()
@@ -100,16 +141,6 @@ func nativePersistentJob(t *testing.T, app, agent, label string) {
 		t.Fatalf("registration did not report a job and private path:\n%s", output)
 	}
 	id, jobDir := string(idMatch[1]), string(dirMatch[1])
-	var cleanupOnce sync.Once
-	cleanup := func() {
-		cleanupOnce.Do(func() {
-			remove := exec.Command(app, "--remove", id)
-			if out, removeErr := remove.CombinedOutput(); removeErr != nil {
-				t.Errorf("remove own job %s: %v\n%s", id, removeErr, out)
-			}
-		})
-	}
-	t.Cleanup(cleanup)
 
 	// Registration is a completed public CLI process. Before the future trigger,
 	// no private result or fake-agent marker may exist.

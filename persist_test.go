@@ -462,3 +462,41 @@ func TestPersistWakeRebuildsAndAuthenticatesAtExecution(t *testing.T) {
 		t.Fatalf("%+v %v", result, err)
 	}
 }
+
+// Match only records belonging to this invocation's unique fixture paths.
+// Never sweep other user jobs merely because their registration failed.
+func nativeFixtureJobIDs(store jobStore, app, agent, work string) ([]string, error) {
+	entries, err := os.ReadDir(store.root)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, entry := range entries {
+		if !entry.IsDir() || !jobIDPattern.MatchString(entry.Name()) {
+			continue
+		}
+		j, err := store.load(entry.Name())
+		if err == nil && j.Launcher == app && j.Request.Executable == agent && j.Request.CD == work {
+			ids = append(ids, j.ID)
+		}
+	}
+	return ids, nil
+}
+
+func TestNativeFixtureCleanupFindsReadbackFailureOnly(t *testing.T) {
+	store, tasks, o := testJobStore(t)
+	tasks.readErr = fmt.Errorf("read-back failed")
+	j, err := store.register(o, nil)
+	if err == nil {
+		t.Fatal("expected read-back failure")
+	}
+	other := o
+	other.CD = t.TempDir()
+	if _, err := store.register(other, nil); err == nil {
+		t.Fatal("expected other read-back failure")
+	}
+	ids, err := nativeFixtureJobIDs(store, store.launcher, o.Executable, o.CD)
+	if err != nil || len(ids) != 1 || ids[0] != j.ID {
+		t.Fatalf("fixture match = %v, %v", ids, err)
+	}
+}

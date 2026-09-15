@@ -4,7 +4,7 @@
 
 [Issue #3](https://github.com/yasuyuki/agent-at/issues/3) の候補実装で
 `--persist`／`--list`／`--remove` を追加しています。未統合のwake実装に依存し、
-v0.2.0配布版には含まれません。Windows native受入は未実施です。
+v0.2.0配布版には含まれません。初回のWindows native受入は不合格で、修正候補の再受入待ちです。
 [検証記録](docs/VERIFICATION.md#persistent-jobs--issue-3)に実施範囲と残件を記載しています。
 
 ```powershell
