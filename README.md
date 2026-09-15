@@ -22,6 +22,72 @@ the exact tested scope and remaining checks. Real Claude headless scheduled
 execution and same-session resume passed on Linux; Claude interactive and
 Windows desktop behavior remain unverified.
 
+## Keep a reservation after closing the terminal (unreleased, Windows)
+
+The candidate for [Issue #3](https://github.com/yasuyuki/agent-at/issues/3)
+adds `--persist`, `--list`, and `--remove`. It depends on the unreleased wake
+change; the v0.2.0 download does **not** contain these options. Windows native
+acceptance is pending; see [verification](docs/VERIFICATION.md#persistent-jobs--issue-3).
+
+```powershell
+.\dist\agent-at.exe --persist --wake --at 05:00
+.\dist\agent-at.exe --persist --wake --agent claude --at 05:00
+.\dist\agent-at.exe --persist --at 23:30 --prompt-file .\request.txt
+.\dist\agent-at.exe --persist --at 23:30 --resume SESSION_ID
+.\dist\agent-at.exe --list
+.\dist\agent-at.exe --remove JOB_ID
+```
+
+Registration saves a one-time Windows Task Scheduler task and exits. After a
+successful registration you may close all terminals; there is no waiting
+agent-at process. The PC must be on and awake, with the **same user signed in**
+at the scheduled time. A locked screen is supported; being powered on without
+sign-in is insufficient. Reservations survive a PC restart if the user signs
+in before the time. Native terminal-close/restart/lock acceptance remains pending.
+There is no catch-up after power-off, sleep or sign-out, no wake-from-sleep,
+repeat trigger or automatic retry. `--at` is required even with resume; the
+resolved date, seconds and UTC offset are saved once. If the time passes during
+registration, agent-at reports the retained state instead of claiming success.
+
+Persist is always **headless**. `--headless` is allowed; `--headless=false`,
+`--new-console=true` and `--close-on-exit=true` are errors. Normal/resume
+requests keep their usual settings and approval policy; wake retains its
+minimal policy, execution timeout and clean CLI default model when omitted.
+`--list` and `--remove` are exclusive with reservation flags and do not resolve
+an installed agent or inspect authentication. Linux/macOS, including WSL Linux
+binaries, reject these persistence operations. Foreground timers are unchanged.
+
+The registration output gives a job ID, task name, resolved time, agent/model
+policy and private data directory. Exit 0 means **registered**, not that a model
+request succeeded. Ctrl+C after registration does not cancel the OS task.
+Use `--list` for reservation/start/result state and missing or inconsistent OS
+registration. `--remove JOB_ID` cancels an unstarted job or deletes a finished
+job's payload, results and logs; it refuses active execution. An OS deletion
+failure retains data and a local cancellation record, so a pending request
+cannot start; retry removal after resolving the reported OS error.
+
+Requests and `stdout.log`, `stderr.log`, `started.json`, `result.json` are kept
+under the user's Windows LocalAppData known folder, `agent-at\jobs\JOB_ID`,
+until removal. The protected DACL limits access to that user; prompts and logs
+may contain sensitive data. Do not publish them unfiltered. A start record
+without a result means **started / result unknown**, even after a crash; it is
+never automatically resent. This is not exactly-once model-service acceptance,
+and does not control the CLI's internal network retries.
+
+Prompt-file content is frozen at registration. Keep agent-at, the selected
+CLI and required working/additional directories at their original absolute
+paths until execution. There is no executable self-copy. Only PATH and
+authentication/configuration home paths are saved (HOME, USERPROFILE,
+CODEX_HOME, CLAUDE_CONFIG_DIR, ANTHROPIC_CONFIG_DIR, XDG_CONFIG_HOME, APPDATA).
+Relative entries are resolved when registering; npm `.cmd` shims still need
+Node on the saved PATH. Other variables come from the OS execution environment,
+including proxy/CA requirements. Terminal-only secret variables are not
+supported, copied or restored. Credentials are read from their original homes
+at execution; expired/unsupported wake authentication fails without login or
+an API/provider fallback. No Windows password, elevation or new service is
+required; Task Scheduler permission and working CLI authentication/network
+access are prerequisites. Unsupported saved schemas are preserved and rejected.
+
 ## One minimal request at a scheduled time (unreleased)
 
 ```powershell

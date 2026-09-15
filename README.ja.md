@@ -1,5 +1,60 @@
 # agent-at
 
+## 端末を閉じても予約を保持する（未リリース・Windows専用）
+
+[Issue #3](https://github.com/yasuyuki/agent-at/issues/3) の候補実装で
+`--persist`／`--list`／`--remove` を追加しています。未統合のwake実装に依存し、
+v0.2.0配布版には含まれません。Windows native受入は未実施です。
+[検証記録](docs/VERIFICATION.md#persistent-jobs--issue-3)に実施範囲と残件を記載しています。
+
+```powershell
+.\dist\agent-at.exe --persist --wake --at 05:00
+.\dist\agent-at.exe --persist --wake --agent claude --at 05:00
+.\dist\agent-at.exe --persist --at 23:30 --prompt-file .\request.txt
+.\dist\agent-at.exe --persist --at 23:30 --resume SESSION_ID
+.\dist\agent-at.exe --list
+.\dist\agent-at.exe --remove JOB_ID
+```
+
+Windowsタスクスケジューラへ一回予約を保存して終了します。登録成功後は全ターミナルを
+閉じて構いません。待機する独自プロセスは残しません。指定時刻にPCが起動・非スリープで、
+**同じユーザーがサインイン済み**である必要があります。画面ロック中も対象ですが、
+電源が入っているだけで未サインインなら対象外です。PC再起動後も予約は保持され、時刻までに
+再サインインしていれば対象です。端末終了・PC再起動・ロック中のnative実証は残件です。
+電源OFF／スリープ／サインアウトで見逃した要求の追い掛け実行、スリープ解除、繰返し、
+自動再試行は行いません。resumeも `--at` 必須で、日時・秒・offsetを一度だけ固定します。
+登録中に指定時刻を過ぎた場合は成功と断定せず、残った状態を表示します。
+
+persistは常にheadlessです。`--headless` は重複指定できますが、`--headless=false`、
+`--new-console=true`、`--close-on-exit=true` は入力エラーです。通常要求／resumeの設定・
+承認方針は従来どおり、wakeは既存の軽量化・実行timeoutを保ち、model省略時はclean CLI
+defaultです。`--list`／`--remove` は予約入力と排他で、CLIが未導入でも認証検査なしで
+使用できます。Linux／macOSおよびWSLのLinuxバイナリでは未対応として拒否します。
+従来の端末内タイマーの動作は変えません。
+
+登録表示のジョブID、タスク名、確定日時、agent／model方針、保存先を確認してください。
+exit 0は**登録成功**で、要求の実行成功ではありません。登録後のCtrl+Cでは取消されません。
+`--list` は予約・開始記録・完了結果とOS登録の欠落／不整合を表示します。
+`--remove JOB_ID` は未開始予約を取消し、実行済みなら要求・結果・ログを削除します。
+実行中は拒否します。OS側の削除失敗時はデータと局所的な取消記録を残して起動を防ぎ、
+報告されたOS側の問題を解決してから削除を再実施できます。
+
+保存先はWindowsが返す当該ユーザーのLocalAppData配下 `agent-at\jobs\JOB_ID` です。
+要求、`stdout.log`／`stderr.log`、`started.json`／`result.json` を `--remove` まで保持します。
+保護DACLで当該ユーザーだけにアクセスを制限します。promptやログは機密を含み得るため、
+無選別に公開しないでください。開始記録後に停止し結果が残らなければ「開始済み／結果不明」
+とし、自動再送しません。モデル側のexactly-once受付は保証せず、CLI内部の通信retryとも別です。
+
+prompt-fileは登録時の内容を固定します。agent-at自身、選択CLI、必要な作業先／add-dirは
+元の絶対pathに保持してください。exeの自己コピーはしません。保存する環境はPATHと
+HOME、USERPROFILE、CODEX_HOME、CLAUDE_CONFIG_DIR、ANTHROPIC_CONFIG_DIR、
+XDG_CONFIG_HOME、APPDATAだけで、相対pathは登録時に絶対化します。npm `.cmd` は保存PATH
+からNodeを解決できる必要があります。他の環境変数はOS側を使い、proxy／CA等もその条件に
+従います。端末内だけの秘密環境変数の保存・移植は未対応です。資格情報は実行時に元の場所から
+読み、wake認証の期限切れ・非対応方式はログインや別課金へのfallbackをせず失敗します。
+Windowsパスワード保存・昇格・常駐サービスは不要ですが、タスク登録権限、CLI認証と通信は
+必要です。非対応schemaは実行せず、記録を保持します。
+
 インストール・認証済みのエージェントをローカル時刻に一度起動するタイマーです。
 タイマー自体に外部ランタイムは不要です。主対象は Windows 10／11 x64。
 ソースは Linux／macOS でも利用でき、対話型は現在のターミナルで動作します。

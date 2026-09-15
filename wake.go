@@ -105,14 +105,21 @@ func scheduleWake(o options) int {
 }
 
 func runWake(ctx context.Context, cmd *exec.Cmd, limit time.Duration, diagnostic io.Writer) int {
+	code, _ := runWakeResult(ctx, cmd, limit, diagnostic)
+	return code
+}
+
+// Share the same runner with persisted jobs, retaining a failure category even
+// when a child's own exit code happens to equal the timeout code.
+func runWakeResult(ctx context.Context, cmd *exec.Cmd, limit time.Duration, diagnostic io.Writer) (int, string) {
 	if ctx.Err() != nil {
-		return 130
+		return 130, "cancelled"
 	}
 	started := time.Now()
 	terminate, release, err := startWakeProcess(cmd)
 	if err != nil {
 		fmt.Fprintln(diagnostic, "agent-at: wake launch failed:", err)
-		return 1
+		return 1, "launch_failed"
 	}
 	defer release()
 	fmt.Fprintf(diagnostic, "Wake launched at %s\n", started.Format(time.RFC3339Nano))
@@ -143,5 +150,5 @@ func runWake(ctx context.Context, cmd *exec.Cmd, limit time.Duration, diagnostic
 		<-done // Reap the child before its temporary directory is removed.
 	}
 	fmt.Fprintf(diagnostic, "wake request %s (exit %d, elapsed %s)\n", status, code, time.Since(started).Round(time.Millisecond))
-	return code
+	return code, status
 }

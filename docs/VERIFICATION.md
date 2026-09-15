@@ -1,5 +1,117 @@
 # Verification and remaining acceptance
 
+## Persistent jobs / Issue #3
+
+Execution contract and result authority:
+[Issue #3](https://github.com/yasuyuki/agent-at/issues/3).
+The candidate is based on wake PR #2 (`024a7da11fd6521e6950e3e15ec1372c64dc9008`),
+with a separate dependent PR targeting `feat/wake-1`. No merge, release, tag,
+distributed executable or permanent operational task is part of this change.
+
+### Implementation and evidence map
+
+| Contract | Implementation and reproducible evidence |
+| --- | --- |
+| Windows-only CLI, headless constraints, list/remove independence | `main.go`, `TestPersistFlagContract`; existing scheduling/resume/wake tests remain in `go test ./...` |
+| Fixed time, prompt-file snapshot, private JSON and environment allowlist | `persist.go`, `TestPersistRegistrationSnapshot`, `TestPersistEnvironmentSnapshot`, `TestPersistRejectSavedSchemaAndOwner` |
+| Save before OS registration, failure/uncertainty handling | `TestPersistRegistrationFailures`, `TestPersistRegistrationSerializesRemoval`; no CLI is started by registration tests |
+| One OS time trigger, InteractiveToken/LeastPrivilege, no missed-run catch-up | Shared `taskXML`/`validateTaskXML` and `TestTaskXML*`/`TestValidateTaskXML*`; Windows backend uses standard system-directory PowerShell COM only for management, with structured JSON stdin/HRESULT results and TASK_CREATE |
+| Once-only start, crash/result-unknown preservation, cancel/start exclusion | `TestPersistExecuteOnceAndResults`, `TestPersistCancelStartRace`, `TestPersistFailedDeleteCancelsLocally`; exclusive durable start marker plus OS-released file lock held through child exit/deletion |
+| Headless argv/stdin, cwd, result/log retention and exit code | `TestPersistHeadlessRealHelper` runs both fake vendor CLIs and resume through the shared `prepare` implementation |
+| Wake one-run/auth/environment/Job handling | Shared `prepareWake`, `checkWakeAuth`, `wakeEnvironment`, `runWakeResult`; `TestPersistWakeRebuildsAndAuthenticatesAtExecution` plus existing `TestWake*` tests. No second wake runner |
+| Private storage | Windows known-folder lookup, current SID, protected current-user DACL and reparse rejection in `persist_platform_windows.go`; native-only platform tests cover lock exclusion/deletion and DACL rejection |
+
+Registration holds the same lifecycle lock as execution/removal. If registration
+crosses its scheduled time, its retained job is reported as unconfirmed rather
+than successful. `started.json` is created exclusively and flushed before child
+launch. A missing result after wrapper/PC termination does not prove the model
+request was absent and never causes replay. An incomplete result is reported
+unknown. This does not offer exactly-once acceptance by an external service.
+
+Read-back verifies the saved principal, trigger, action and required settings.
+A definite TASK_CREATE error removes only the newly created payload. Transport
+or read-back uncertainty retains the ID/task/data and reports the recovery path;
+there is no automatic re-registration. A failed removal retains cancellation
+state, preventing later start. Prompt or credential bytes are not in Task XML.
+
+### Linux and cross-target checks
+
+From the source checkout, with the existing Go toolchain:
+
+```sh
+go test ./...
+go vet ./...
+go test -race ./...
+```
+
+Windows amd64 `go vet ./...`, test cross-compilation and application build,
+plus Linux amd64/macOS arm64 application builds, are run for the candidate.
+The exact commands, exit statuses and revision are recorded in Issue #3's
+result comment. Cross-compilation does not exercise Task Scheduler, DACLs,
+PowerShell COM, Windows Job nesting or a desktop session.
+
+### Windows native acceptance still required
+
+Use a **native Windows standard-user session** with Go and the candidate source
+revision from Issue #3, preserving unrelated checkout changes. The existing
+Go commands in the README apply. From that checkout in PowerShell:
+
+```powershell
+go test ./...
+go vet ./...
+$env:AGENT_AT_PERSIST_NATIVE = '1'
+go test -run '^TestPersistentTaskSchedulerNative$' -v .
+Remove-Item Env:AGENT_AT_PERSIST_NATIVE
+```
+
+`TestPersistentTaskSchedulerNative` is opt-in because it registers short-lived
+OS tasks. It builds the real application and the network-free
+`testdata/persist-agent` fixture, registers through the public CLI, observes that
+registration exits before the fake agent starts, checks saved logs/exit 23,
+checks duplicate execution, then removes its own jobs. A Node-backed `.cmd`
+case runs when Node is on PATH; a skip leaves that acceptance incomplete.
+All fixture paths are temporary, no real authentication or model request is
+used, and failures report the affected job for cleanup through `--remove`.
+The test itself remains alive as an observer: it proves registration-process
+exit, **not closure of every terminal**. Native test code is cross-compiled
+here but has not been executed here.
+
+The receiving Windows agent must record the following separately in Issue #3:
+
+1. Build the application and the existing fake fixture into a retained disposable
+   test directory. Register a short future normal fake request, note its ID and
+   private directory, then close the registering terminal. With no original
+   terminal remaining, verify after the time that exactly one marker, the
+   result and logs exist. Observe the waiting interval for absent agent-at,
+   fake CLI and MCP processes. Remove that specific job afterward.
+2. Exercise `.exe` and `.cmd`/Node scheduling under the same signed-in standard
+   user, preserved PATH/authentication roots, Unicode/spaced/shell-character
+   paths, and confirm the Task Scheduler's last result agrees with the child
+   exit code. Native tests cover part of this; record skipped cases explicitly.
+3. Execute a fake wake from an actual scheduler parent Job, with synthetic
+   file-auth fixtures only, and verify timeout and descendant cleanup using
+   the existing Windows Job tests as the expected behavior. Ordinary direct
+   Job tests alone do not prove nested Task Scheduler execution.
+4. On an available disposable Windows VM, test reservation before reboot then
+   sign-in before the time, and execution while screen-locked. Test a missed
+   time while unavailable without next-day/catch-up requests. Do not reboot,
+   sign out or lock the user's working PC without explicit authorization.
+   With no suitable VM, retain these as unverified.
+5. With already available subscription file authentication, run only the
+   minimum scheduled real wake necessary to verify the new environment and
+   scheduler path. Do not repeat Issue #1's full measurements, create API
+   credentials, change authentication or install permanent tasks. Record
+   unsupported/expired authentication as a failure, without fallback.
+
+The Linux source environment has no Windows desktop execution capability or
+authorized outward connection path. The registered Windows controller is the
+proposed receiver; availability in the catalog is not proof of reachability,
+receipt or successful execution. Keep the PR Draft and Issue open until the
+required native acceptance is returned. Sanitized result summaries, revisions,
+OS/CLI versions and test pass/fail belong in Issue #3; private raw prompts,
+authentication data and CLI logs do not. Issue #1 only receives a relationship
+reference; its existing acceptance remains separate.
+
 ## Wake / Issue #1 (2026-09-15, unreleased)
 
 Execution contract and result authority: [Issue #1](https://github.com/yasuyuki/agent-at/issues/1),
