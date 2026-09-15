@@ -54,6 +54,9 @@ func TestMain(m *testing.M) {
 		_ = json.NewEncoder(os.Stdout).Encode(o)
 		fmtBytes := []byte("helper stderr\n")
 		_, _ = os.Stderr.Write(fmtBytes)
+		if os.Getenv("AGENT_AT_TEST_WAIT") == "1" {
+			time.Sleep(time.Hour)
+		}
 		if os.Getenv("AGENT_AT_TEST_FAIL") == "1" {
 			os.Exit(23)
 		}

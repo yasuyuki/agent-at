@@ -1,5 +1,120 @@
 # Verification and remaining acceptance
 
+## Wake / Issue #1 (2026-09-15, unreleased)
+
+Execution contract and result authority: [Issue #1](https://github.com/yasuyuki/agent-at/issues/1),
+revised 2026-09-15. Base main: `6a4f44c185952d3a48045658de68d18c5e36f5ea`.
+Normal scheduling/resume is unchanged. Wake prepares one argv/stdin/temp cwd
+before waiting; its cancellation context remains active after firing. Unix
+process groups and Windows suspended-start Job assignment own child cleanup.
+No service retries, auth relocation, configuration replacement, tags or releases.
+
+### Adopted CLI policy and evidence
+
+- Codex 0.154.0: `exec --ignore-user-config --ephemeral --skip-git-repo-check
+  --sandbox read-only`, approval `never`, short cwd-relative instructions,
+  low effort, skills catalog/bundled skills disabled, skill dependency install
+  and shadow search disabled, hooks/memory/shell/snapshots/multi-agent/goals,
+  plugins/Apps/remote plugins and web search disabled; history persistence none.
+  Settings were checked against the
+  [0.154.0 schema](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/core/config.schema.json)
+  and the corresponding [config loader](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/config/src/loader/mod.rs),
+  [skills configuration](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/config/src/skills_config.rs),
+  [extension setup](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/app-server/src/extensions.rs)
+  and [plugin loader](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/core-plugins/src/manager.rs).
+  Unknown-key acceptance was not used as proof. The `skip_host_skill_discovery`
+  feature does not suppress discovery with this CLI's registered host provider,
+  so it is not included. `forced_login_method` can log out mismatched credentials
+  and is deliberately not used. File authentication is checked read-only.
+- Claude Code 2.1.268: `--print --safe-mode --setting-sources "" --tools ""
+  --max-turns 1 --no-session-persistence --output-format text --system-prompt …
+  --effort low --`; no positional `-`. The installed help/source and
+  [official CLI](https://code.claude.com/docs/en/cli-reference),
+  [safe mode](https://code.claude.com/docs/en/debug-your-config),
+  [authentication](https://code.claude.com/docs/en/authentication) and
+  [environment variable](https://code.claude.com/docs/en/env-vars) references
+  establish the selected policy. Child-only
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` suppresses session-title inference
+  and the optional MCP registry fetch. `--disable-slash-commands` would not stop
+  startup's bundled-skill enumeration and is not redundantly added.
+
+Real Linux requests used existing ChatGPT and Claude Pro OAuth file credentials,
+original authentication homes, and clean CLI default models. `TestWakeLive`
+was explicitly enabled for each vendor executable. It uses the actual
+parse/prepare/schedule/run functions with test-only structured output/debug
+flags. Normal startup has no diagnostic flag, capability probe or logging DB.
+Private raw traces remain outside Git; selected nonsecret observations follow.
+
+| Observation | Codex | Claude final |
+| --- | --- | --- |
+| CLI | 0.154.0 | 2.1.268 |
+| Actual model | gpt-6-astra | claude-sonnet-5 |
+| Literal response / process exit | `ok` / 0 | `ok` / 0 |
+| Launch to natural exit | 5.598 s | 2.125 s |
+| Input / output / reasoning tokens | 4522 / 5 / 0 | 503 / 4 / 0 |
+| Cached input | 3328 | 0 |
+| Service timing | not separately observed | 1510 ms API time reported by CLI |
+| Additional inference | no additional inference event observed | modelUsage contains only claude-sonnet-5 |
+| Temporary cwd removed | yes | yes |
+
+Codex structured events were `thread.started`, `turn.started`, one
+`item.completed` agent message `ok`, then `turn.completed` with the usage above.
+Debug reported `auth_mode: Some(Chatgpt)`, `auth_credentials_store_mode: File`,
+low effort, approval Never, `thread_start.dynamic_tool_count=0` and zero loaded
+execpolicy files. It shut down its thread normally. The captured logger scope
+does not establish an exhaustive inventory of subprocesses, network requests
+or filesystem reads, nor expose the complete model input. In particular, no
+exact skill/project context byte count is claimed from these logs. Catalog
+exclusion and bundled-skill disabling are grounded in the adopted version's
+configuration/source; user/system skill-root metadata discovery can remain.
+
+Claude final debug reported safe-mode connector suppression, zero enabled
+plugins, skill-directory discovery skipped, zero registered hooks and no
+marketplaces declared. It still builds an internal list of 40 bundled skills,
+sets up filesystem watchers and performs internal initialization. The final
+trace has no MCP registry fetch or `generate_session_title` request. Full
+wire-input/context and an OS-wide process/network trace were not captured;
+absence from logs is not a claim of zero filesystem operations or all network
+traffic. Managed hooks/policy and authentication are not bypassed.
+
+An initial Claude smoke exposed a real requirement failure: automatic title
+inference used Haiku (900 input / 9 output tokens) in addition to the literal
+reply (503 / 4). Its total launch-to-exit was 5.388 s. This prompted the official
+nonessential-traffic setting and exactly one corrective smoke. The final
+modelUsage contains only the requested-model response. This was defect
+verification, not a quota/reset experiment or a repeated benchmark; no speedup
+percentage or comparison with normal startup is claimed. Each timer invocation
+started its CLI once; CLI-internal HTTP count is not guaranteed.
+
+### Automated checks and remaining scope
+
+Go 1.27.1 Linux amd64, the existing project's required toolchain version, was
+used from an official archive verified against its published SHA-256. Tests
+cover wake flag presence/exclusions, literal preservation, fake-agent argv/stdin,
+private cwd and cleanup, one scheduled launch after wall-clock changes, retained
+exit codes, timeout and cancellation, authentication rejection without mutation,
+and process-group descendants. Windows tests additionally cover empty `.cmd`
+arguments, shell characters, length/quote rejection and suspended Job descendant
+cleanup for `.exe`/`.cmd`. Independent review found and fixed shared test-buffer
+races, Windows authentication-profile location and relative-auth-root ambiguity.
+
+Final command results are recorded with the result commit in Issue #1:
+`go test ./...`, `go vet ./...`, `go test -race ./...`, Windows amd64 vet/test
+cross-compilation/build and macOS arm64 cross-build. The Windows executable and
+`dist/SHA256SUMS` are updated together. Cross-compilation is not native execution.
+
+Unverified: Windows 10/11 native execution (including installed vendor `.cmd`,
+Job behaviour, Ctrl+C console delivery), macOS native execution, organization
+mandatory-policy variants, keychain-only credentials, and complete wire-context
+or OS-level discovery/communication inventories. Claude wake on macOS is refused
+because its keychain auth route cannot be safely classified here. Unknown/API,
+gateway/federation and host-managed credentials fail before a model request;
+there is no API-provider fallback. The result does not prove usage-window start,
+reset, zero consumption, or rollout to another environment. The Issue remains
+the result and remaining-acceptance ledger.
+
+Earlier sections below describe their original revisions, not wake acceptance.
+
 Status as of 2026-09-10: the **v0.2.0** command/build is **agent-at**, with Codex
 and Claude Code selected by `--agent`. The repository is now [yasuyuki/agent-at](https://github.com/yasuyuki/agent-at).
 The **codex-at v0.1.0-preview.1** ZIP is retained as a separate historical release. Historical Windows results below apply to that earlier build,

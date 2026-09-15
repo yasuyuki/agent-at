@@ -22,18 +22,21 @@ func (s *stringsFlag) String() string     { return strings.Join(*s, ", ") }
 func (s *stringsFlag) Set(v string) error { *s = append(*s, v); return nil }
 
 type options struct {
-	At         time.Time
-	Prompt     string
-	CD         string
-	AddDirs    stringsFlag
-	Model      string
-	Executable string
-	Agent      string
-	NoApprove  bool
-	Headless   bool
-	Close      bool
-	NewConsole bool
-	Resume     string
+	At          time.Time
+	Prompt      string
+	CD          string
+	AddDirs     stringsFlag
+	Model       string
+	Executable  string
+	Agent       string
+	NoApprove   bool
+	Headless    bool
+	Close       bool
+	NewConsole  bool
+	Resume      string
+	Wake        bool
+	WakeText    string
+	WakeTimeout time.Duration
 }
 
 func parseOptions(args []string, now time.Time, out io.Writer) (options, error) {
@@ -42,10 +45,13 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	f := flag.NewFlagSet("agent-at", flag.ContinueOnError)
 	f.SetOutput(out)
 	f.StringVar(&at, "at", "", "Local HH:mm[:ss] or YYYY-MM-DDTHH:mm[:ss]")
+	f.BoolVar(&o.Wake, "wake", false, "Send one minimal headless request; skips user settings (model: clean CLI default)")
+	f.StringVar(&o.WakeText, "wake-text", "ok", "Literal one-line reply requested by --wake")
+	f.DurationVar(&o.WakeTimeout, "wake-timeout", 2*time.Minute, "Positive execution timeout for --wake; excludes waiting")
 	f.StringVar(&promptFile, "prompt-file", "", "Read the prompt from a UTF-8 file (optional BOM)")
 	f.StringVar(&o.CD, "cd", "", "Working directory (default: current directory)")
 	f.Var(&o.AddDirs, "add-dir", "Additional directory (repeatable)")
-	f.StringVar(&o.Model, "model", "", "Agent model (default: inherit the selected agent configuration)")
+	f.StringVar(&o.Model, "model", "", "Agent model (normal: inherit configuration; wake: clean CLI default)")
 	f.StringVar(&o.Agent, "agent", "codex", "Agent to run: codex or claude")
 	f.StringVar(&o.Executable, "agent-path", "", "Agent executable (.exe or .cmd on Windows; default: selected agent on PATH)")
 	f.BoolVar(&o.NoApprove, "no-auto-approve", false, "Inherit agent approval configuration instead of requesting automatic review")
@@ -54,11 +60,20 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	f.BoolVar(&o.NewConsole, "new-console", false, "Open a dedicated Windows console instead of inheriting the current terminal")
 	f.BoolVar(&o.Close, "close-on-exit", false, "Close the dedicated console after the agent exits")
 	f.Usage = func() {
-		fmt.Fprintln(out, "Usage: agent-at --at TIME [options] -- \"prompt\"\n       agent-at --at TIME [options] --prompt-file FILE\n       agent-at --resume SESSION_ID [--at TIME] [options]\n\nPlace options before the single prompt argument. Ctrl+C cancels while waiting.")
+		fmt.Fprintln(out, "Usage: agent-at --at TIME [options] -- \"prompt\"\n       agent-at --at TIME [options] --prompt-file FILE\n       agent-at --resume SESSION_ID [--at TIME] [options]\n       agent-at --wake --at TIME [--agent codex|claude] [--model MODEL]\n\nPlace options before the single prompt argument. Ctrl+C cancels while waiting.\nWake skips user settings; omitted model uses clean CLI default. Even a minimal\nrequest consumes usage; quota timer start/reset is not guaranteed. Keep the timer\nopen; it does not wake a sleeping PC. Wake policy: Codex 0.154.0 / Claude 2.1.268.\nExisting subscription file authentication is required; keychain-only/unknown\nproviders fail. Mandatory auth/policy and internal discovery may remain.\nUnsupported CLI options fail without retry.")
 		f.PrintDefaults()
 	}
 	if err := f.Parse(args); err != nil {
 		return o, err
+	}
+	set := map[string]bool{}
+	f.Visit(func(v *flag.Flag) { set[v.Name] = true })
+	if err := validateWake(o, set, f.NArg()); err != nil {
+		return o, err
+	}
+	if o.Wake {
+		o.Headless = true
+		o.Prompt = wakePrompt(o.WakeText)
 	}
 	if o.Agent != "codex" && o.Agent != "claude" {
 		return o, errors.New("--agent must be codex or claude")
@@ -89,7 +104,7 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 			return o, errors.New("--resume cannot be combined with a prompt or --prompt-file")
 		}
 		o.Prompt = "resume"
-	} else {
+	} else if !o.Wake {
 		if (promptFile != "" && f.NArg() != 0) || (promptFile == "" && f.NArg() != 1) {
 			return o, errors.New("provide exactly one prompt argument or --prompt-file")
 		}
@@ -176,6 +191,9 @@ func run(args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "agent-at:", err)
 		return 2
+	}
+	if o.Wake {
+		return scheduleWake(o)
 	}
 	// Validate platform command limits and temporary storage before waiting.
 	_, cleanup, err := prepare(o)

@@ -19,6 +19,57 @@ Ctrl+C、自動クローズなどは未検証です。確認範囲と残項目�
 Claude のヘッドレス予約実行と同一会話の再開は Linux の実 CLI で確認済みです。
 Claude の対話型と Windows 実画面の動作は未確認です。
 
+
+## 指定時刻に最小要求を1回送る（未リリース）
+
+```powershell
+.\dist\agent-at.exe --wake --at 05:00
+.\dist\agent-at.exe --wake --agent claude --at 05:00 --wake-text "ready"
+```
+
+wakeは専用の一時cwdで常にheadless実行し、JSON文字列で区切った短い要求をstdinへ1回だけ
+渡します。返してほしい文字列は既定で `ok`。`--wake-text` は空白だけでないUTF-8の1行で、
+引用符・日本語・shell特殊文字も扱えます。`--wake-timeout` は正のGo duration、既定 `2m`。
+予約待機時間は含みません。タイマーを開いたままにしてください。PCのスリープ解除やOS予約では
+ありません。時計変更・スリープ復帰で期限を過ぎた場合も既存タイマーで1回だけ起動し、実際の起動時刻を表示します。
+
+**wakeは通常のユーザー／プロジェクト設定を読みません。** `--model` 省略時はclean CLI default
+であり、普段のモデルと異なる場合があります。特定モデルの利用枠を狙うなら `--model MODEL` を
+明示します。別モデルへの切替、再試行、枠のポーリング、自動再予約はしません。
+最小要求でも使用量が発生します。成功表示は要求の完了であり、5時間・週間枠の開始・リセット・
+起点移動を保証しません。送信後のtimeoutも消費ゼロの証拠ではありません。
+
+対象の起動方針はCodex **0.154.0**、Claude Code **2.1.268**で確認しています。
+必要なflagがない旧版では、通常設定へ戻さず失敗します。Codexはignore-user-config、read-only、
+approval neverとし、ツール・hooks・memory・plugins／Apps・Web検索・スキルcatalog注入・同梱
+スキルを停止します。Claudeはsafe mode、空setting sources／tools、1turnを指定します。
+Claudeはnonessential trafficも停止し、セッション名の補助推論を省きます。
+両者とも長い開発指示を短い固定指示へ置換し、同じモデルのlow effortを選びます。
+lowに対応しないモデルは再送せず失敗します。通常タスク／resumeの設定・承認動作は従来どおりです。
+
+既存サブスク認証とproxy／CA、必須管理policyを維持します。別のAPI課金経路で要求を送らないよう、
+起動直前に既存の認証ファイルを読み取り専用で検査し、API／provider／通常モデルの環境変数は
+子だけから除きます。CodexはChatGPTの `auth.json`、Claudeはgateway／federationのない
+サブスクOAuthファイル認証が必要です。keychainだけの認証、不明な方式、相対の認証home、
+host管理providerは未対応エラーにします。macOSのClaude wakeもkeychain方式を確認できないため
+未対応です。資格情報のコピー・移動、ログインや恒久設定の変更をagent-atは行いません。
+CLI自身の認証更新・認証やmetadata cacheの更新は残り得ます。
+
+認証・必須policy／hooks・内部初期化は残ります。ディスク探索とcontext注入は別で、Codexは
+catalog停止後もユーザースキルのrootを調べる場合があります。実測と観測限界は
+[検証記録](docs/VERIFICATION.md)を参照してください。
+
+wakeとresume、prompt、prompt-file、明示cd／add-dir、headless=false、new-console=true、
+close-on-exit=trueは併用不可です。headlessとno-auto-approveは冗長指定として許可し、
+通常の自動承認は追加しません。wakeなしのwake-text／wake-timeoutは入力エラーです。
+終了コードは入力エラー2、起動・認証エラー1、timeout124、取消130、通常終了は子の終了コード。
+起動後もCtrl+Cで取り消せます。このwakeのprocess group／Windows Jobの子孫だけを終了させ、
+子の終了後に一時領域を削除します。親の強制終了やOS停止では一時領域が残り得ます。
+Unixで意図的にprocess groupから離脱した子はgroupの対象外です。
+
+source treeの同梱buildにはwakeが入ります。上記公開v0.2.0 ZIPには含まれません。
+この変更ではreleaseを公開しません。
+
 ## 使い方
 
 現在のプロジェクトのディレクトリを PowerShell で開き、実行します。

@@ -22,6 +22,71 @@ the exact tested scope and remaining checks. Real Claude headless scheduled
 execution and same-session resume passed on Linux; Claude interactive and
 Windows desktop behavior remain unverified.
 
+## One minimal request at a scheduled time (unreleased)
+
+```powershell
+.\dist\agent-at.exe --wake --at 05:00
+.\dist\agent-at.exe --wake --agent claude --at 05:00 --wake-text "ready"
+```
+
+Wake always runs headless in a private temporary working directory. It sends one
+JSON-delimited literal request on stdin, default `ok`, then exits. `--wake-text`
+accepts one nonblank UTF-8 line, including quotes, Japanese and shell characters.
+`--wake-timeout 2m` is the default positive execution limit; waiting is excluded.
+Keep the timer open. It neither wakes a sleeping PC nor creates an OS task.
+After sleep or a clock change, the existing timer fires once when overdue and
+reports the actual launch time.
+
+**Wake skips normal user/project settings.** Without `--model`, it uses the clean
+CLI default, which can differ from your normal model. To target a particular
+model's allowance, specify `--model MODEL`. There is no automatic model change,
+retry, quota polling or rescheduling. Even a minimal request consumes usage.
+Completion does not prove a five-hour/weekly allowance started, reset or moved;
+a timeout after sending does not prove zero consumption.
+
+Use installed vendor CLIs with their existing subscription authentication.
+Wake's policy targets Codex **0.154.0** and Claude Code **2.1.268**; older versions
+missing these flags fail without falling back to normal settings. Codex uses
+`--ignore-user-config`, read-only sandbox, approval `never`, disabled tools,
+hooks, memory, plugins/Apps, web search, skill catalog injection and bundled
+skills. Claude uses safe mode, empty setting sources/tools and one turn.
+Claude also disables nonessential traffic, including session-title inference.
+Both replace the development instructions with a short fixed instruction and
+select low effort on the same model. A model that rejects low effort fails
+without retry. Normal tasks and resume retain their existing model/approval
+behaviour.
+
+Authentication homes, proxy/CA and mandatory management policy are retained.
+To avoid silently using a paid API/provider route, wake checks existing
+subscription file credentials read-only before launch and removes API/provider
+and normal-model environment overrides from the child only. Codex requires
+ChatGPT `auth.json` file credentials; Claude requires subscription OAuth file
+credentials without gateway/federation authentication. Keychain-only, unknown,
+relative authentication-home paths and host-managed provider modes are refused.
+Claude wake on macOS is currently unsupported because its keychain route cannot
+be verified this way. No credentials are copied or moved, and no login or
+persistent setting change is performed by agent-at. The vendor CLI can still
+refresh credentials and update its own authentication/metadata cache.
+
+Authentication, mandatory policy/hooks and internal initialization can remain.
+Local discovery and context injection are different: Codex can still inspect
+user skill roots even with its catalog disabled. See [verification](docs/VERIFICATION.md)
+for measured residual discovery and the limits of the live observations.
+
+Wake rejects `--resume`, prompts, `--prompt-file`, explicit `--cd`/`--add-dir`,
+`--headless=false`, `--new-console=true` and `--close-on-exit=true`.
+`--headless` and `--no-auto-approve` are redundant and allowed; wake never adds
+normal automatic approval. `--wake-text`/`--wake-timeout` without wake are errors.
+Input errors return 2, launch/authentication failures 1, timeout 124, cancellation
+130; normal completion returns the child exit code. Ctrl+C remains active after
+launch. Cleanup terminates only this wake's process group/job and removes its
+temporary directory after the child exits. Forced supervisor termination or OS
+shutdown can leave temporary files; Unix children that deliberately detach from
+the process group are outside that group.
+
+The bundled source-tree build includes this feature; the published v0.2.0 ZIP
+above predates wake. This change does not publish a release.
+
 ## Use
 
 Run `dist\agent-at.exe` in PowerShell from the project directory:
