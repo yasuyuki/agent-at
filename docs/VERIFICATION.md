@@ -1,5 +1,74 @@
 # Verification and remaining acceptance
 
+## Linux and macOS persistence / Issues #5 and #6
+
+Contracts/results: [Linux #5](https://github.com/yasuyuki/agent-at/issues/5),
+[macOS #6](https://github.com/yasuyuki/agent-at/issues/6). This dependent candidate
+starts at Windows `f9d96deb3fb112c21100dcc77151812739352e0c` (PR #4);
+main integration and release are not included.
+
+### Implemented and host-verified
+
+- Linux: persistent systemd user unit pair, read-back with exact owned files,
+  loaded paths/no drop-ins, literal path escaping, standard `/usr/bin/env --`
+  for launcher paths systemd cannot accept as its first executable, no runtime
+  cap for normal tasks, and public removal including disabled/partial units.
+- macOS: private LaunchAgent plist, GUI UID domain only, literal argv array,
+  saved calendar-year/minute/seconds dispatch guard, common once-only store.
+  Exact private plist validation plus successful `launchctl print` is the
+  read-back evidence; diagnostic print is **not** parsed as a complete live
+  configuration proof. Ambiguous/missing registrations retain data for review.
+- Unix execution waits for the registration lock; management remains
+  nonblocking and rejects active execution. Common result/log and wake runner
+  tests cover normal/resume, timeout, duplicate prevention and descendant cleanup.
+- macOS wake: Claude subscription metadata via safe-mode/empty-setting-source
+  `auth status --json`; Codex existing ChatGPT file auth or explicit native
+  `keyring` status propagated into request argv. Invalid/API file auth never
+  falls back. Status output is private, bounded, fail-closed and uses the existing
+  wake timeout/process-group cleanup. Unknown versions/status schemas fail closed.
+
+Host: isolated Linux amd64, existing Go 1.27.1. `go test ./...`, `go vet ./...`,
+`go test -race ./...` passed. Windows amd64 and Darwin amd64/arm64 vet,
+test cross-compilation and application builds passed. Offline
+`systemd-analyze verify --user` passed using disposable unit/runtime directories;
+this does not start a user manager or prove timed execution.
+
+The existing Claude 2.1.268 CLI accepted global
+`--safe-mode --setting-sources '' auth status --json` against an isolated
+synthetic settings directory. Its fake `apiKeyHelper` marker was not created;
+status reported no login. Without those flags it reported `api_key_helper`.
+No real credential or model request was used in this check. Codex 0.154.0
+supports the `keyring` configuration value; its login-status command does not
+support `--ignore-user-config` (the actual exec request retains that flag).
+
+### Native acceptance still outstanding
+
+`AGENT_AT_PERSIST_NATIVE=1 go test -run '^TestPersistentUnixSchedulerNative$' -v .`
+was attempted on Linux and stopped **before any registration**, because the
+user bus/runtime directory is unavailable. No native fixture jobs were created.
+The same opt-in test is available on macOS. It builds a disposable fake CLI,
+checks process-exit-only timed execution, once-only marker, logs/exit result,
+public removal and absence of private job data; failed fixtures are retained.
+
+Native systemd execution, all-terminal closure, reboot/login/lock/suspend,
+macOS bootstrap/bootout and unattended Keychain/real wake remain **unverified**.
+The user explicitly accepts unavailable Mac testing; this is implementation
+coverage, not native acceptance. Linux user-manager repair, crossing isolation,
+real login/auth changes, reboot/logoff and operational recurring tasks are not
+performed. README documents Linux suspend catch-up and macOS calendar/year,
+login catch-up and timezone limitations.
+
+State uses `$HOME/.local/state/agent-at/jobs` (Linux) or
+`$HOME/Library/Application Support/agent-at/jobs` (macOS). Scheduler files use
+`$HOME/.config/systemd/user` or `$HOME/Library/LaunchAgents`; XDG overrides do not
+move these stores. HOME is fixed in the scheduled action. Owner/non-writable
+parents and private job files are required; symlinks are refused. Preserve these
+paths and executable/CLI/work paths while reservations exist.
+
+Primary platform references: [systemd timer manual](https://github.com/systemd/systemd/blob/main/man/systemd.timer.xml),
+[Apple LaunchAgents](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+
+
 ## Persistent jobs / Issue #3
 
 Execution contract and result authority:
@@ -12,7 +81,7 @@ distributed executable or permanent operational task is part of this change.
 
 | Contract | Implementation and reproducible evidence |
 | --- | --- |
-| Windows-only CLI, headless constraints, list/remove independence | `main.go`, `TestPersistFlagContract`; existing scheduling/resume/wake tests remain in `go test ./...` |
+| Original Windows CLI, headless constraints, list/remove independence | `main.go`, `TestPersistFlagContract`; existing scheduling/resume/wake tests remain in `go test ./...` |
 | Fixed time, prompt-file snapshot, private JSON and environment allowlist | `persist.go`, `TestPersistRegistrationSnapshot`, `TestPersistEnvironmentSnapshot`, `TestPersistRejectSavedSchemaAndOwner` |
 | Save before OS registration, failure/uncertainty handling | `TestPersistRegistrationFailures`, `TestPersistRegistrationSerializesRemoval`; no CLI is started by registration tests |
 | One OS time trigger, InteractiveToken/LeastPrivilege, no missed-run catch-up | Shared `taskXML`/`validateTaskXML` and `TestTaskXML*`/`TestValidateTaskXML*`; Windows backend uses standard system-directory PowerShell COM only for management, with structured JSON stdin/HRESULT results and TASK_CREATE |

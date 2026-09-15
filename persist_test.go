@@ -89,8 +89,10 @@ func TestPersistFlagContract(t *testing.T) {
 		{"both", options{List: true, Remove: strings.Repeat("a", 32)}, map[string]bool{"list": true, "remove": true}, 0, "windows", false, true},
 		{"traversal", options{Remove: "../job"}, map[string]bool{"remove": true}, 0, "windows", false, true},
 		{"remove", options{Remove: strings.Repeat("a", 32)}, map[string]bool{"remove": true}, 0, "windows", true, true},
-		{"Linux", options{Persist: true}, map[string]bool{"persist": true, "at": true}, 0, "linux", false, false},
-		{"Mac list", options{List: true}, map[string]bool{"list": true}, 0, "darwin", false, true},
+		{"Linux", options{Persist: true}, map[string]bool{"persist": true, "at": true}, 0, "linux", true, false},
+		{"macOS", options{Persist: true}, map[string]bool{"persist": true, "at": true}, 0, "darwin", true, false},
+		{"unsupported", options{Persist: true}, map[string]bool{"persist": true, "at": true}, 0, "freebsd", false, false},
+		{"Mac list", options{List: true}, map[string]bool{"list": true}, 0, "darwin", true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, err := validatePersist(tc.o, tc.set, tc.n, tc.platform)
@@ -99,7 +101,7 @@ func TestPersistFlagContract(t *testing.T) {
 			}
 		})
 	}
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		for _, args := range [][]string{{"--list"}, {"--remove", strings.Repeat("a", 32)}, {"--persist", "--at", "23:59", "--agent-path", "nonexistent", "x"}} {
 			_, err := parseOptions(args, time.Now(), io.Discard)
 			if err == nil || !strings.Contains(err.Error(), "native Windows") {
@@ -268,11 +270,16 @@ func TestPersistCancelStartRace(t *testing.T) {
 		t.Fatal("removed running data")
 	}
 	var duplicate atomic.Int32
-	_, _ = s.execute(j.ID, o.At, func(_ persistentJob, _, _ io.Writer) (int, string) { duplicate.Add(1); return 0, "cli_success" })
+	duplicateDone := make(chan struct{})
+	go func() {
+		_, _ = s.execute(j.ID, o.At, func(_ persistentJob, _, _ io.Writer) (int, string) { duplicate.Add(1); return 0, "cli_success" })
+		close(duplicateDone)
+	}()
 	if duplicate.Load() != 0 {
 		t.Fatal("concurrent duplicate")
 	}
 	close(finish)
+	<-duplicateDone
 	if err = <-done; err != nil {
 		t.Fatal(err)
 	}

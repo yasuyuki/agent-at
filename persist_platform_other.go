@@ -1,19 +1,14 @@
-//go:build !windows
+//go:build !windows && !linux && !darwin
 
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
 )
 
 const lifecycleLockName = ".agent-at-lifecycle.lock"
-
-func persistentIdentity() (string, string, error) {
-	return "", "", fmt.Errorf("persistent schedules are supported only on Windows")
-}
 
 // secureJobDir creates the directory and its lock entry before returning, so
 // lockJob never has to create an entry in an existing job directory.
@@ -44,3 +39,5 @@ func lockJob(path string) (func(), error) {
 		_ = f.Close()
 	}, nil
 }
+
+func verifyJobLockForExecution(string) error { return nil }

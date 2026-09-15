@@ -92,7 +92,7 @@ func scheduleWake(o options) int {
 	}
 	fmt.Fprintf(os.Stderr, "Wake scheduled for %s (%s); agent=%s model=%s. Wake skips user settings; specify --model to target a model. Keep this timer open; Ctrl+C cancels.\n", o.At.Format(time.RFC3339), o.At.Location(), o.Agent, model)
 	code, err := schedule(ctx, wallClock{}, o.At, func() int {
-		if err := checkWakeAuth(o.Agent, cmd.Environ()); err != nil {
+		if err := authorizeWakeCommand(ctx, o, cmd); err != nil {
 			fmt.Fprintln(os.Stderr, "agent-at: wake authentication unsupported:", err)
 			return 1
 		}

@@ -1,10 +1,10 @@
 # agent-at
 
-## 端末を閉じても予約を保持する（未リリース・Windows専用）
+## 端末を閉じても予約を保持する（未リリース）
 
 [Issue #3](https://github.com/yasuyuki/agent-at/issues/3) の候補実装で
 `--persist`／`--list`／`--remove` を追加しています。未統合のwake実装に依存し、
-v0.2.0配布版には含まれません。初回のWindows native受入は不合格で、修正候補の再受入待ちです。
+v0.2.0配布版には含まれません。Windowsはf9d96deで予約・実行・清掃が合格し、全端末終了・再起動・ロック等は未受入です。
 [検証記録](docs/VERIFICATION.md#persistent-jobs--issue-3)に実施範囲と残件を記載しています。
 
 ```powershell
@@ -29,7 +29,7 @@ persistは常にheadlessです。`--headless` は重複指定できますが、`
 `--new-console=true`、`--close-on-exit=true` は入力エラーです。通常要求／resumeの設定・
 承認方針は従来どおり、wakeは既存の軽量化・実行timeoutを保ち、model省略時はclean CLI
 defaultです。`--list`／`--remove` は予約入力と排他で、CLIが未導入でも認証検査なしで
-使用できます。Linux／macOSおよびWSLのLinuxバイナリでは未対応として拒否します。
+使用できます。Linuxはsystemd user timer、macOSはlaunchdを使用します（後述）。
 従来の端末内タイマーの動作は変えません。
 
 登録表示のジョブID、タスク名、確定日時、agent／model方針、保存先を確認してください。
@@ -102,13 +102,14 @@ Claudeはnonessential trafficも停止し、セッション名の補助推論を
 両者とも長い開発指示を短い固定指示へ置換し、同じモデルのlow effortを選びます。
 lowに対応しないモデルは再送せず失敗します。通常タスク／resumeの設定・承認動作は従来どおりです。
 
-既存サブスク認証とproxy／CA、必須管理policyを維持します。別のAPI課金経路で要求を送らないよう、
-起動直前に既存の認証ファイルを読み取り専用で検査し、API／provider／通常モデルの環境変数は
-子だけから除きます。CodexはChatGPTの `auth.json`、Claudeはgateway／federationのない
-サブスクOAuthファイル認証が必要です。keychainだけの認証、不明な方式、相対の認証home、
-host管理providerは未対応エラーにします。macOSのClaude wakeもkeychain方式を確認できないため
-未対応です。資格情報のコピー・移動、ログインや恒久設定の変更をagent-atは行いません。
-CLI自身の認証更新・認証やmetadata cacheの更新は残り得ます。
+既存サブスク認証とproxy／CA、必須管理policyを維持し、API／provider／通常モデルの環境変数は
+子だけから除きます。Windows/Linuxは既存サブスク認証ファイルを検査します。
+macOSのClaudeは `auth status --json` のメタデータでfirst-party Claude.aiサブスクだけを許可します。
+Codexは既存ChatGPT認証ファイルを優先し、ファイルがない場合だけ `login status` でKeychainの
+`keyring` storeを確認して実要求にも同じstoreを指定します。不正・API認証ファイルからのfallbackはありません。
+statusはwake timeout内で実行し、モデルへの要求は送りません。出力は表示・保存しません。
+Mac実機と無人Keychainアクセスは未確認です。資格情報のコピー・移動、ログイン・恒久設定変更は行いません。
+CLI自身による認証更新・metadata cache更新は残り得ます。
 
 認証・必須policy／hooks・内部初期化は残ります。ディスク探索とcontext注入は別で、Codexは
 catalog停止後もユーザースキルのrootを調べる場合があります。実測と観測限界は
@@ -279,3 +280,32 @@ Windows 用テストのコンパイルだけでは実行済みになりません
 MIT ライセンス。exe に含む Go runtime・標準ライブラリの
 [ライセンス表示](docs/GO-LICENSE.txt)も配布物に同梱します。
 OpenAI／Anthropic の公式製品ではありません。
+
+## Linux / macOS の永続予約（未リリース）
+
+Linux #5・macOS #6は同じ `--persist`／`--list`／`--remove` を使い、
+通常要求・resume・wake・timeout・結果保存・清掃を共通処理で実行します。
+
+```sh
+agent-at --persist --wake --agent claude --at 05:00
+agent-at --persist --at 23:30 --prompt-file request.txt
+agent-at --persist --at 23:30 --resume SESSION_ID
+agent-at --list
+agent-at --remove JOB_ID
+```
+
+Linuxはsystemdのユーザーtimer/serviceを保存します。利用可能なuser managerが必要で、
+指定時刻にそのmanagerが稼働していれば端末終了・画面ロック後も実行できます。
+予約ファイルは再起動後も残りますが、通常は指定時刻までのサインインが必要です。
+linger・root権限・独自daemonを追加しません。manager停止中の追い掛け実行は無効ですが、
+稼働中managerのスリープ復帰・時計の前進では遅れて起動する場合があります。
+
+macOSはユーザーのLaunchAgentsを使い、GUIログインdomainが必要です。
+ログイン時にも起動し、保存した日時・実行済み記録を照合します。launchdには秒・年の指定がないため、
+対象の分に起動したhelperだけが残り秒を待ち、同じ保存暦年の遅延起動は実行、翌年以降は実行しません。
+再ログインや毎年のcalendar起動でもモデル要求は重複しません。予約中のsystem timezone変更には対応しません。
+LaunchDaemon・root権限・自動ログインは追加しません。
+
+実行ファイル・CLI・作業先・既存認証は保存した場所に保持してください。
+Mac実機の動作は未確認です。Linuxも実user managerでの受入とhostテストを区別し、
+[検証記録](docs/VERIFICATION.md)に残します。これらはv0.2.0配布版には含まれません。

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -32,8 +33,8 @@ func validatePersist(o options, set map[string]bool, positional int, platform st
 			return true, errors.New("--list and --remove are exclusive with all reservation inputs")
 		}
 	}
-	if (management || o.Persist) && platform != "windows" {
-		return management, errors.New("persistent jobs are supported only by native Windows agent-at (no WSL bridge)")
+	if (management || o.Persist) && platform != "windows" && platform != "linux" && platform != "darwin" {
+		return management, errors.New("persistent jobs require native Windows, Linux with systemd user timers, or macOS with launchd (no WSL bridge)")
 	}
 	if o.Persist {
 		if !set["at"] {
@@ -301,7 +302,7 @@ func (s jobStore) execute(id string, now time.Time, launch func(persistentJob, i
 	if err != nil {
 		return 2, err
 	}
-	release, err := lockJob(dir)
+	release, err := lockJobForExecution(dir)
 	if err != nil {
 		return 1, fmt.Errorf("job running, being removed, or unavailable: %w", err)
 	}
@@ -368,7 +369,7 @@ func launchPersistent(j persistentJob, stdout, stderr io.Writer) (int, string) {
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	if o.Wake {
 		cmd.Env = wakeEnvironment(cmd.Env)
-		if err = checkWakeAuth(o.Agent, cmd.Env); err != nil {
+		if err = authorizeWakeCommand(context.Background(), o, cmd); err != nil {
 			fmt.Fprintln(stderr, "agent-at: authentication:", err)
 			return 1, "auth_failed"
 		}
@@ -411,7 +412,11 @@ func (s jobStore) remove(id string) error {
 	}
 	// Validate ownership before removing any OS task. Missing OS registration
 	// does not prevent removing this user's private record.
-	if err = s.tasks.Read(s.spec(j)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	readForRemoval := s.tasks.Read
+	if reader, ok := s.tasks.(interface{ ReadForRemoval(taskSpec) error }); ok {
+		readForRemoval = reader.ReadForRemoval
+	}
+	if err = readForRemoval(s.spec(j)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	cancelled, err := exists(filepath.Join(dir, "cancelled.json"))
@@ -514,7 +519,7 @@ func runPersistent(o options) int {
 						model = "clean CLI default (user settings skipped)"
 					}
 				}
-				fmt.Fprintf(os.Stdout, "Registered job %s\nTask: %s\nAt: %s\nAgent: %s; model: %s\nPrivate request, stdout.log, stderr.log and result.json: %s\nRegistration succeeded; execution has not occurred. You may close this terminal.\nAlways headless. PC must be awake and the same user signed in; screen lock is OK.\nNo catch-up after power-off, sleep or sign-out. Keep executable/CLI/work paths in place.\n", j.ID, taskName(s.spec(j)), o.At.Format(time.RFC3339), o.Agent, model, filepath.Join(s.root, j.ID))
+				fmt.Fprintf(os.Stdout, "Registered job %s\nTask: %s\nAt: %s\nAgent: %s; model: %s\nPrivate request, stdout.log, stderr.log and result.json: %s\nRegistration succeeded; execution has not occurred. You may close this terminal.\n%s\n", j.ID, taskName(s.spec(j)), o.At.Format(time.RFC3339), o.Agent, model, filepath.Join(s.root, j.ID), persistentConditions())
 			}
 		}
 	}
@@ -535,9 +540,27 @@ func persistentChild(args []string) int {
 		fmt.Fprintln(os.Stderr, "agent-at:", err)
 		return 1
 	}
+	skip, err := persistentDispatch(s, args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "agent-at:", err)
+		return 1
+	}
+	if skip {
+		return 0
+	}
 	code, err := s.execute(args[0], time.Now(), launchPersistent)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "agent-at:", err)
 	}
 	return code
+}
+
+func persistentConditions() string {
+	if runtime.GOOS == "darwin" {
+		return "Always headless. Requires this user GUI login domain; screen lock is OK.\nLaunchAgents survive reboot. Login/resume may deliver late within the saved calendar year.\nMinute trigger checks saved seconds/year; keep system timezone and executable/CLI/work paths unchanged."
+	}
+	if runtime.GOOS == "linux" {
+		return "Always headless. Requires a running systemd user manager (normally signed in); screen lock is OK.\nTimer files survive reboot. No catch-up after manager inactivity; a suspended running manager can execute on resume.\nNo automatic linger, wake-from-sleep or retry. Keep executable/CLI/work paths in place."
+	}
+	return "Always headless. PC must be awake and the same user signed in; screen lock is OK.\nNo catch-up after power-off, sleep or sign-out. Keep executable/CLI/work paths in place."
 }
