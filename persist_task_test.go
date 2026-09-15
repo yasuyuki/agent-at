@@ -1,12 +1,124 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// Synthetic reconstruction of the omissions reported by the Windows receiver,
+// not a claim that these are captured native XML bytes.
+func schedulerOmittedDefaults(definition string) string {
+	for _, element := range []string{
+		"<RunLevel>LeastPrivilege</RunLevel>", "<Enabled>true</Enabled>",
+		"<StartWhenAvailable>false</StartWhenAvailable>", "<WakeToRun>false</WakeToRun>",
+		"<RunOnlyIfIdle>false</RunOnlyIfIdle>", "<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>",
+	} {
+		definition = strings.ReplaceAll(definition, element, "")
+	}
+	return `<?xml version="1.0" encoding="UTF-16"?>` + definition
+}
+
+func TestTaskXMLOmittedDefaults(t *testing.T) {
+	spec := testTaskSpec()
+	definition, err := taskXML(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	omitted := schedulerOmittedDefaults(definition)
+	if err := validateTaskXML(omitted, spec); err != nil {
+		t.Fatal(err)
+	}
+	// IgnoreNew is also the documented default even though this native export
+	// retained it. A nondefault limit or battery setting may never be inferred.
+	if err := validateTaskXML(strings.ReplaceAll(omitted, "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>", ""), spec); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ parent, name, good, bad string }{
+		{"Principal", "RunLevel", "LeastPrivilege", "HighestAvailable"},
+		{"TimeTrigger", "Enabled", "true", "false"},
+		{"Settings", "Enabled", "true", "false"},
+		{"Settings", "StartWhenAvailable", "false", "true"},
+		{"Settings", "WakeToRun", "false", "true"},
+		{"Settings", "RunOnlyIfIdle", "false", "true"},
+		{"Settings", "RunOnlyIfNetworkAvailable", "false", "true"},
+	} {
+		t.Run(tc.parent+"/"+tc.name, func(t *testing.T) {
+			for _, value := range []string{"", tc.bad, "invalid"} {
+				element := "<" + tc.name + ">" + value + "</" + tc.name + ">"
+				changed := strings.Replace(omitted, "</"+tc.parent+">", element+"</"+tc.parent+">", 1)
+				if err := validateTaskXML(changed, spec); err == nil {
+					t.Fatalf("accepted explicit %q", element)
+				}
+			}
+			element := "<" + tc.name + ">" + tc.good + "</" + tc.name + ">"
+			changed := strings.Replace(omitted, "</"+tc.parent+">", element+element+"</"+tc.parent+">", 1)
+			if err := validateTaskXML(changed, spec); err == nil {
+				t.Fatal("accepted duplicate")
+			}
+		})
+	}
+	for _, element := range []string{
+		"<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>",
+		"<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>",
+		"<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
+		"<UserId>" + spec.SID + "</UserId>",
+		"<LogonType>InteractiveToken</LogonType>",
+		"<StartBoundary>" + spec.At.Format(time.RFC3339) + "</StartBoundary>",
+		"<Command>" + spec.Executable + "</Command>",
+		"<Arguments>--internal-persist " + spec.ID + "</Arguments>",
+	} {
+		changed := strings.Replace(omitted, element, "", 1)
+		if changed == omitted {
+			t.Fatalf("fixture element missing: %s", element)
+		}
+		if err := validateTaskXML(changed, spec); err == nil {
+			t.Fatalf("accepted missing %s", element)
+		}
+	}
+}
+
+type omittedXMLTasks struct{ *fakeTasks }
+
+func (f omittedXMLTasks) Read(spec taskSpec) error {
+	if err := f.fakeTasks.Read(spec); err != nil {
+		return err
+	}
+	definition, err := taskXML(spec)
+	if err != nil {
+		return err
+	}
+	return validateTaskXML(schedulerOmittedDefaults(definition), spec)
+}
+
+func TestOmittedXMLRegistrationListAndRemoval(t *testing.T) {
+	store, tasks, o := testJobStore(t)
+	store.tasks = omittedXMLTasks{tasks}
+	j, err := store.register(o, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := store.list(&out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "OS registered") || strings.Contains(out.String(), "inconsistent") {
+		t.Fatal(out.String())
+	}
+	if err := store.remove(j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks.jobs) != 0 {
+		t.Fatal("task retained")
+	}
+	if present, err := exists(filepath.Join(store.root, j.ID)); err != nil || present {
+		t.Fatalf("data retained: %v", err)
+	}
+}
 
 func TestTaskXMLCOMStringEncodingDeclaration(t *testing.T) {
 	spec := testTaskSpec()

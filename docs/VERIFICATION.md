@@ -73,6 +73,26 @@ jobs or bypass public removal checks. The repair still needs native re-acceptanc
 Sources for the string boundary: [RegisteredTask.XML is a string](https://learn.microsoft.com/en-us/windows/win32/taskschd/registeredtask-xml)
 and [Go XML decoder charset handling](https://pkg.go.dev/encoding/xml#Decoder).
 
+The [second Windows return](https://github.com/yasuyuki/agent-at/issues/3#issuecomment-5683970457)
+confirmed `c1cb032` passes the native empty-argument test, full normal suite and
+vet. Scheduler read-back/remove still failed because its export omits default
+values. Both trial jobs were cleaned by the receiver. Saved and OS exit values
+were 23 in both jobs, a limited observation rather than complete E2E acceptance.
+
+The next repair resolves omitted values using the
+[Microsoft settings/trigger schema](https://github.com/MicrosoftDocs/win32/blob/docs/desktop-src/TaskSchd/task-scheduler-schema.md)
+and [default low privilege context](https://learn.microsoft.com/en-us/windows/win32/taskschd/security-contexts-for-running-tasks).
+RunLevel defaults to LeastPrivilege, both Enabled values to true, and the four
+availability/wake/idle/network conditions to false. IgnoreNew may also be
+omitted. Battery restrictions default to true and the execution limit to PT72H,
+so their omission still fails the requested false/PT0S contract. Explicit
+empty, duplicate, malformed or conflicting values are not defaulted. Owner,
+logon type, action and time remain mandatory and exact.
+`TestTaskXMLOmittedDefaults` reconstructs the reported omissions synthetically;
+`TestOmittedXMLRegistrationListAndRemoval` tests the shared lifecycle against
+that representation. These are not captured native XML or a new native pass.
+Repeat the existing native order on the new candidate before later acceptance.
+
 Use a **native Windows standard-user session** with Go and the candidate source
 revision from Issue #3, preserving unrelated checkout changes. The existing
 Go commands in the README apply. From that checkout in PowerShell:

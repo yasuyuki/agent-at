@@ -81,6 +81,19 @@ func text(n xmlNode, name string) (string, bool) {
 	return node.Text, ok
 }
 
+// Task Scheduler omits values equal to its defaults when exporting XML.
+// Only absence receives a default: empty, duplicate or structured values do not.
+func taskValue(n xmlNode, name, omitted string) (string, bool) {
+	nodes := n.child(name)
+	if len(nodes) == 0 {
+		return omitted, true
+	}
+	if len(nodes) != 1 || len(nodes[0].Nodes) != 0 {
+		return "", false
+	}
+	return nodes[0].Text, true
+}
+
 func taskXML(spec taskSpec) (string, error) {
 	if strings.TrimSpace(spec.ID) == "" || strings.TrimSpace(spec.SID) == "" || spec.Executable == "" || spec.Directory == "" || spec.At.IsZero() {
 		return "", errors.New("incomplete task specification")
@@ -127,7 +140,9 @@ func validateTaskXML(definition string, spec taskSpec) error {
 	if got, ok := text(principal, "LogonType"); !ok || got != "InteractiveToken" {
 		return errors.New("task logon type differs")
 	}
-	if got, ok := text(principal, "RunLevel"); !ok || got != "LeastPrivilege" {
+	// Default LUA is documented under Security Contexts for Tasks; the native
+	// return also confirmed Principal.RunLevel == 0 with this element omitted.
+	if got, ok := taskValue(principal, "RunLevel", "LeastPrivilege"); !ok || got != "LeastPrivilege" {
 		return errors.New("task run level differs")
 	}
 	triggers, ok := one(task, "Triggers")
@@ -142,7 +157,7 @@ func validateTaskXML(definition string, spec taskSpec) error {
 	if got, ok := text(trigger, "StartBoundary"); !ok || got != wantTime {
 		return errors.New("task time differs")
 	}
-	if got, ok := text(trigger, "Enabled"); !ok || got != "true" {
+	if got, ok := taskValue(trigger, "Enabled", "true"); !ok || got != "true" {
 		return errors.New("task trigger is disabled")
 	}
 	actions, ok := one(task, "Actions")
@@ -164,8 +179,12 @@ func validateTaskXML(definition string, spec taskSpec) error {
 		return errors.New("task settings missing")
 	}
 	want := map[string]string{"Enabled": "true", "MultipleInstancesPolicy": "IgnoreNew", "DisallowStartIfOnBatteries": "false", "StopIfGoingOnBatteries": "false", "StartWhenAvailable": "false", "RunOnlyIfIdle": "false", "RunOnlyIfNetworkAvailable": "false", "WakeToRun": "false", "ExecutionTimeLimit": "PT0S"}
+	// Microsoft Task Scheduler schema, settingsType. Defaults are OS values,
+	// not desired values: omitted battery flags and the 72-hour time limit must
+	// therefore still fail this job's contract.
+	defaults := map[string]string{"Enabled": "true", "MultipleInstancesPolicy": "IgnoreNew", "DisallowStartIfOnBatteries": "true", "StopIfGoingOnBatteries": "true", "StartWhenAvailable": "false", "RunOnlyIfIdle": "false", "RunOnlyIfNetworkAvailable": "false", "WakeToRun": "false", "ExecutionTimeLimit": "PT72H"}
 	for name, value := range want {
-		if got, ok := text(settings, name); !ok || got != value {
+		if got, ok := taskValue(settings, name, defaults[name]); !ok || got != value {
 			return fmt.Errorf("task setting %s differs", name)
 		}
 	}
