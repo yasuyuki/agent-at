@@ -1,5 +1,60 @@
 # agent-at
 
+## 端末を閉じても予約を保持する（未リリース）
+
+[Issue #3](https://github.com/yasuyuki/agent-at/issues/3) の候補実装で
+`--persist`／`--list`／`--remove` を追加しています。未統合のwake実装に依存し、
+v0.2.0配布版には含まれません。Windowsはf9d96deで予約・実行・清掃が合格し、全端末終了・再起動・ロック等は未受入です。
+[検証記録](docs/VERIFICATION.md#persistent-jobs--issue-3)に実施範囲と残件を記載しています。
+
+```powershell
+.\dist\agent-at.exe --persist --wake --at 05:00
+.\dist\agent-at.exe --persist --wake --agent claude --at 05:00
+.\dist\agent-at.exe --persist --at 23:30 --prompt-file .\request.txt
+.\dist\agent-at.exe --persist --at 23:30 --resume SESSION_ID
+.\dist\agent-at.exe --list
+.\dist\agent-at.exe --remove JOB_ID
+```
+
+Windowsタスクスケジューラへ一回予約を保存して終了します。登録成功後は全ターミナルを
+閉じて構いません。待機する独自プロセスは残しません。指定時刻にPCが起動・非スリープで、
+**同じユーザーがサインイン済み**である必要があります。画面ロック中も対象ですが、
+電源が入っているだけで未サインインなら対象外です。PC再起動後も予約は保持され、時刻までに
+再サインインしていれば対象です。端末終了・PC再起動・ロック中のnative実証は残件です。
+電源OFF／スリープ／サインアウトで見逃した要求の追い掛け実行、スリープ解除、繰返し、
+自動再試行は行いません。resumeも `--at` 必須で、日時・秒・offsetを一度だけ固定します。
+登録中に指定時刻を過ぎた場合は成功と断定せず、残った状態を表示します。
+
+persistは常にheadlessです。`--headless` は重複指定できますが、`--headless=false`、
+`--new-console=true`、`--close-on-exit=true` は入力エラーです。通常要求／resumeの設定・
+承認方針は従来どおり、wakeは既存の軽量化・実行timeoutを保ち、model省略時はclean CLI
+defaultです。`--list`／`--remove` は予約入力と排他で、CLIが未導入でも認証検査なしで
+使用できます。Linuxはsystemd user timer、macOSはlaunchdを使用します（後述）。
+従来の端末内タイマーの動作は変えません。
+
+登録表示のジョブID、タスク名、確定日時、agent／model方針、保存先を確認してください。
+exit 0は**登録成功**で、要求の実行成功ではありません。登録後のCtrl+Cでは取消されません。
+`--list` は予約・開始記録・完了結果とOS登録の欠落／不整合を表示します。
+`--remove JOB_ID` は未開始予約を取消し、実行済みなら要求・結果・ログを削除します。
+実行中は拒否します。OS側の削除失敗時はデータと局所的な取消記録を残して起動を防ぎ、
+報告されたOS側の問題を解決してから削除を再実施できます。
+
+保存先はWindowsが返す当該ユーザーのLocalAppData配下 `agent-at\jobs\JOB_ID` です。
+要求、`stdout.log`／`stderr.log`、`started.json`／`result.json` を `--remove` まで保持します。
+保護DACLで当該ユーザーだけにアクセスを制限します。promptやログは機密を含み得るため、
+無選別に公開しないでください。開始記録後に停止し結果が残らなければ「開始済み／結果不明」
+とし、自動再送しません。モデル側のexactly-once受付は保証せず、CLI内部の通信retryとも別です。
+
+prompt-fileは登録時の内容を固定します。agent-at自身、選択CLI、必要な作業先／add-dirは
+元の絶対pathに保持してください。exeの自己コピーはしません。保存する環境はPATHと
+HOME、USERPROFILE、CODEX_HOME、CLAUDE_CONFIG_DIR、ANTHROPIC_CONFIG_DIR、
+XDG_CONFIG_HOME、APPDATAだけで、相対pathは登録時に絶対化します。npm `.cmd` は保存PATH
+からNodeを解決できる必要があります。他の環境変数はOS側を使い、proxy／CA等もその条件に
+従います。端末内だけの秘密環境変数の保存・移植は未対応です。資格情報は実行時に元の場所から
+読み、wake認証の期限切れ・非対応方式はログインや別課金へのfallbackをせず失敗します。
+Windowsパスワード保存・昇格・常駐サービスは不要ですが、タスク登録権限、CLI認証と通信は
+必要です。非対応schemaは実行せず、記録を保持します。
+
 インストール・認証済みのエージェントをローカル時刻に一度起動するタイマーです。
 タイマー自体に外部ランタイムは不要です。主対象は Windows 10／11 x64。
 ソースは Linux／macOS でも利用でき、対話型は現在のターミナルで動作します。
@@ -18,6 +73,58 @@ Ctrl+C、自動クローズなどは未検証です。確認範囲と残項目�
 [検証記録](docs/VERIFICATION.md)に明記しています。
 Claude のヘッドレス予約実行と同一会話の再開は Linux の実 CLI で確認済みです。
 Claude の対話型と Windows 実画面の動作は未確認です。
+
+
+## 指定時刻に最小要求を1回送る（未リリース）
+
+```powershell
+.\dist\agent-at.exe --wake --at 05:00
+.\dist\agent-at.exe --wake --agent claude --at 05:00 --wake-text "ready"
+```
+
+wakeは専用の一時cwdで常にheadless実行し、JSON文字列で区切った短い要求をstdinへ1回だけ
+渡します。返してほしい文字列は既定で `ok`。`--wake-text` は空白だけでないUTF-8の1行で、
+引用符・日本語・shell特殊文字も扱えます。`--wake-timeout` は正のGo duration、既定 `2m`。
+予約待機時間は含みません。タイマーを開いたままにしてください。PCのスリープ解除やOS予約では
+ありません。時計変更・スリープ復帰で期限を過ぎた場合も既存タイマーで1回だけ起動し、実際の起動時刻を表示します。
+
+**wakeは通常のユーザー／プロジェクト設定を読みません。** `--model` 省略時はclean CLI default
+であり、普段のモデルと異なる場合があります。特定モデルの利用枠を狙うなら `--model MODEL` を
+明示します。別モデルへの切替、再試行、枠のポーリング、自動再予約はしません。
+最小要求でも使用量が発生します。成功表示は要求の完了であり、5時間・週間枠の開始・リセット・
+起点移動を保証しません。送信後のtimeoutも消費ゼロの証拠ではありません。
+
+対象の起動方針はCodex **0.154.0**、Claude Code **2.1.268**で確認しています。
+必要なflagがない旧版では、通常設定へ戻さず失敗します。Codexはignore-user-config、read-only、
+approval neverとし、ツール・hooks・memory・plugins／Apps・Web検索・スキルcatalog注入・同梱
+スキルを停止します。Claudeはsafe mode、空setting sources／tools、1turnを指定します。
+Claudeはnonessential trafficも停止し、セッション名の補助推論を省きます。
+両者とも長い開発指示を短い固定指示へ置換し、同じモデルのlow effortを選びます。
+lowに対応しないモデルは再送せず失敗します。通常タスク／resumeの設定・承認動作は従来どおりです。
+
+既存サブスク認証とproxy／CA、必須管理policyを維持し、API／provider／通常モデルの環境変数は
+子だけから除きます。Windows/Linuxは既存サブスク認証ファイルを検査します。
+macOSのClaudeは `auth status --json` のメタデータでfirst-party Claude.aiサブスクだけを許可します。
+Codexは既存ChatGPT認証ファイルを優先し、ファイルがない場合だけ `login status` でKeychainの
+`keyring` storeを確認して実要求にも同じstoreを指定します。不正・API認証ファイルからのfallbackはありません。
+statusはwake timeout内で実行し、モデルへの要求は送りません。出力は表示・保存しません。
+Mac実機と無人Keychainアクセスは未確認です。資格情報のコピー・移動、ログイン・恒久設定変更は行いません。
+CLI自身による認証更新・metadata cache更新は残り得ます。
+
+認証・必須policy／hooks・内部初期化は残ります。ディスク探索とcontext注入は別で、Codexは
+catalog停止後もユーザースキルのrootを調べる場合があります。実測と観測限界は
+[検証記録](docs/VERIFICATION.md)を参照してください。
+
+wakeとresume、prompt、prompt-file、明示cd／add-dir、headless=false、new-console=true、
+close-on-exit=trueは併用不可です。headlessとno-auto-approveは冗長指定として許可し、
+通常の自動承認は追加しません。wakeなしのwake-text／wake-timeoutは入力エラーです。
+終了コードは入力エラー2、起動・認証エラー1、timeout124、取消130、通常終了は子の終了コード。
+起動後もCtrl+Cで取り消せます。このwakeのprocess group／Windows Jobの子孫だけを終了させ、
+子の終了後に一時領域を削除します。親の強制終了やOS停止では一時領域が残り得ます。
+Unixで意図的にprocess groupから離脱した子はgroupの対象外です。
+
+source treeの同梱buildにはwakeが入ります。上記公開v0.2.0 ZIPには含まれません。
+この変更ではreleaseを公開しません。
 
 ## 使い方
 
@@ -173,3 +280,32 @@ Windows 用テストのコンパイルだけでは実行済みになりません
 MIT ライセンス。exe に含む Go runtime・標準ライブラリの
 [ライセンス表示](docs/GO-LICENSE.txt)も配布物に同梱します。
 OpenAI／Anthropic の公式製品ではありません。
+
+## Linux / macOS の永続予約（未リリース）
+
+Linux #5・macOS #6は同じ `--persist`／`--list`／`--remove` を使い、
+通常要求・resume・wake・timeout・結果保存・清掃を共通処理で実行します。
+
+```sh
+agent-at --persist --wake --agent claude --at 05:00
+agent-at --persist --at 23:30 --prompt-file request.txt
+agent-at --persist --at 23:30 --resume SESSION_ID
+agent-at --list
+agent-at --remove JOB_ID
+```
+
+Linuxはsystemdのユーザーtimer/serviceを保存します。利用可能なuser managerが必要で、
+指定時刻にそのmanagerが稼働していれば端末終了・画面ロック後も実行できます。
+予約ファイルは再起動後も残りますが、通常は指定時刻までのサインインが必要です。
+linger・root権限・独自daemonを追加しません。manager停止中の追い掛け実行は無効ですが、
+稼働中managerのスリープ復帰・時計の前進では遅れて起動する場合があります。
+
+macOSはユーザーのLaunchAgentsを使い、GUIログインdomainが必要です。
+ログイン時にも起動し、保存した日時・実行済み記録を照合します。launchdには秒・年の指定がないため、
+対象の分に起動したhelperだけが残り秒を待ち、同じ保存暦年の遅延起動は実行、翌年以降は実行しません。
+再ログインや毎年のcalendar起動でもモデル要求は重複しません。予約中のsystem timezone変更には対応しません。
+LaunchDaemon・root権限・自動ログインは追加しません。
+
+実行ファイル・CLI・作業先・既存認証は保存した場所に保持してください。
+Mac実機の動作は未確認です。Linuxも実user managerでの受入とhostテストを区別し、
+[検証記録](docs/VERIFICATION.md)に残します。これらはv0.2.0配布版には含まれません。

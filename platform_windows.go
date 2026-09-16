@@ -47,6 +47,14 @@ func platformCommand(path string, args []string) (*exec.Cmd, error) {
 		if strings.ContainsAny(value, "\x00\r\n\"") {
 			return nil, fmt.Errorf(".cmd arguments must not contain NUL, newline or double quote")
 		}
+		// cmd.exe treats an environment variable assigned an empty value as
+		// undefined while expanding the /c command. Passing a literal quoted
+		// empty argument keeps that argv slot without putting data in cmd code.
+		if value == "" {
+			refs = append(refs, "\"\"")
+			expanded += 2
+			continue
+		}
 		// Force quotes even for values without spaces. Double trailing backslashes
 		// for the eventual native argv decoder, except the batch filename itself.
 		quoted := value

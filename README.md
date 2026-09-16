@@ -22,6 +22,183 @@ the exact tested scope and remaining checks. Real Claude headless scheduled
 execution and same-session resume passed on Linux; Claude interactive and
 Windows desktop behavior remain unverified.
 
+## Keep a reservation after closing the terminal (unreleased)
+
+The candidate for [Issue #3](https://github.com/yasuyuki/agent-at/issues/3)
+adds `--persist`, `--list`, and `--remove`. It depends on the unreleased wake
+change; the v0.2.0 download does **not** contain these options. Windows native registration/execution/cleanup passed at `f9d96de`; terminal-close/reboot/lock checks remain pending.
+See [verification](docs/VERIFICATION.md#persistent-jobs--issue-3).
+
+```powershell
+.\dist\agent-at.exe --persist --wake --at 05:00
+.\dist\agent-at.exe --persist --wake --agent claude --at 05:00
+.\dist\agent-at.exe --persist --at 23:30 --prompt-file .\request.txt
+.\dist\agent-at.exe --persist --at 23:30 --resume SESSION_ID
+.\dist\agent-at.exe --list
+.\dist\agent-at.exe --remove JOB_ID
+```
+
+Registration saves a one-time Windows Task Scheduler task and exits. After a
+successful registration you may close all terminals; there is no waiting
+agent-at process. The PC must be on and awake, with the **same user signed in**
+at the scheduled time. A locked screen is supported; being powered on without
+sign-in is insufficient. Reservations survive a PC restart if the user signs
+in before the time. Native terminal-close/restart/lock acceptance remains pending.
+There is no catch-up after power-off, sleep or sign-out, no wake-from-sleep,
+repeat trigger or automatic retry. `--at` is required even with resume; the
+resolved date, seconds and UTC offset are saved once. If the time passes during
+registration, agent-at reports the retained state instead of claiming success.
+
+Persist is always **headless**. `--headless` is allowed; `--headless=false`,
+`--new-console=true` and `--close-on-exit=true` are errors. Normal/resume
+requests keep their usual settings and approval policy; wake retains its
+minimal policy, execution timeout and clean CLI default model when omitted.
+`--list` and `--remove` are exclusive with reservation flags and do not resolve
+an installed agent or inspect authentication. Foreground timers are unchanged.
+Linux uses its own systemd user manager, including inside WSL if available;
+there is no bridge to Windows Task Scheduler.
+
+The registration output gives a job ID, task name, resolved time, agent/model
+policy and private data directory. Exit 0 means **registered**, not that a model
+request succeeded. Ctrl+C after registration does not cancel the OS task.
+Use `--list` for reservation/start/result state and missing or inconsistent OS
+registration. `--remove JOB_ID` cancels an unstarted job or deletes a finished
+job's payload, results and logs; it refuses active execution. An OS deletion
+failure retains data and a local cancellation record, so a pending request
+cannot start; retry removal after resolving the reported OS error.
+
+Requests and `stdout.log`, `stderr.log`, `started.json`, `result.json` are kept
+under the user's Windows LocalAppData known folder, `agent-at\jobs\JOB_ID`,
+until removal. The protected DACL limits access to that user; prompts and logs
+may contain sensitive data. Do not publish them unfiltered. A start record
+without a result means **started / result unknown**, even after a crash; it is
+never automatically resent. This is not exactly-once model-service acceptance,
+and does not control the CLI's internal network retries.
+
+Prompt-file content is frozen at registration. Keep agent-at, the selected
+CLI and required working/additional directories at their original absolute
+paths until execution. There is no executable self-copy. Only PATH and
+authentication/configuration home paths are saved (HOME, USERPROFILE,
+CODEX_HOME, CLAUDE_CONFIG_DIR, ANTHROPIC_CONFIG_DIR, XDG_CONFIG_HOME, APPDATA).
+Relative entries are resolved when registering; npm `.cmd` shims still need
+Node on the saved PATH. Other variables come from the OS execution environment,
+including proxy/CA requirements. Terminal-only secret variables are not
+supported, copied or restored. Credentials are read from their original homes
+at execution; expired/unsupported wake authentication fails without login or
+an API/provider fallback. No Windows password, elevation or new service is
+required; Task Scheduler permission and working CLI authentication/network
+access are prerequisites. Unsupported saved schemas are preserved and rejected.
+
+## Linux and macOS persistent reservations (unreleased)
+
+[Linux #5](https://github.com/yasuyuki/agent-at/issues/5) and
+[macOS #6](https://github.com/yasuyuki/agent-at/issues/6) extend the same CLI:
+
+```sh
+agent-at --persist --wake --agent claude --at 05:00
+agent-at --persist --at 23:30 --prompt-file request.txt
+agent-at --persist --at 23:30 --resume SESSION_ID
+agent-at --list
+agent-at --remove JOB_ID
+```
+
+Normal requests, resume, wake timeout, private logs/results and public removal
+reuse the common runner. These features are not in the v0.2.0 release.
+
+**Linux:** persistent systemd user `.timer` and `.service` files. Registration
+requires an available `systemctl --user` manager. Timer files survive reboot;
+execution needs that manager running at the scheduled time (normally after
+sign-in). Closing terminals or locking the screen does not itself stop it.
+No system service, root privileges, automatic linger, wake-from-sleep, custom
+daemon or retry is installed. `Persistent=false` avoids catch-up after manager
+inactivity, but a calendar timer can fire after a running machine resumes from
+suspend or its clock moves forward. This differs from Windows.
+
+**macOS:** per-user LaunchAgents require the user's GUI login domain. Plists
+survive reboot and are loaded at GUI sign-in. SSH-only sessions without that
+domain cannot register. `launchd` calendar events have minute precision and no
+year field: the helper checks the saved absolute date and only waits the
+remaining seconds when activated within the target minute. Activation after
+the due time in the saved calendar year can catch up (including login/resume);
+a later calendar year is missed. Start records prevent repeated model requests
+from login or annual calendar activations. Keep the system timezone unchanged
+until the job runs: launchd cannot bind the trigger to the saved offset.
+No LaunchDaemon, root privileges or automatic login is configured.
+
+Keep agent-at and the selected CLI at their saved absolute paths, and keep
+work directories and existing authentication accessible. Scheduler registration
+is not a model-success check. Native Linux and macOS acceptance is reported
+separately in [verification](docs/VERIFICATION.md); compilation is not proof
+of login, reboot, screen-lock or real-model execution.
+
+## One minimal request at a scheduled time (unreleased)
+
+```powershell
+.\dist\agent-at.exe --wake --at 05:00
+.\dist\agent-at.exe --wake --agent claude --at 05:00 --wake-text "ready"
+```
+
+Wake always runs headless in a private temporary working directory. It sends one
+JSON-delimited literal request on stdin, default `ok`, then exits. `--wake-text`
+accepts one nonblank UTF-8 line, including quotes, Japanese and shell characters.
+`--wake-timeout 2m` is the default positive execution limit; waiting is excluded.
+Keep the timer open. It neither wakes a sleeping PC nor creates an OS task.
+After sleep or a clock change, the existing timer fires once when overdue and
+reports the actual launch time.
+
+**Wake skips normal user/project settings.** Without `--model`, it uses the clean
+CLI default, which can differ from your normal model. To target a particular
+model's allowance, specify `--model MODEL`. There is no automatic model change,
+retry, quota polling or rescheduling. Even a minimal request consumes usage.
+Completion does not prove a five-hour/weekly allowance started, reset or moved;
+a timeout after sending does not prove zero consumption.
+
+Use installed vendor CLIs with their existing subscription authentication.
+Wake's policy targets Codex **0.154.0** and Claude Code **2.1.268**; older versions
+missing these flags fail without falling back to normal settings. Codex uses
+`--ignore-user-config`, read-only sandbox, approval `never`, disabled tools,
+hooks, memory, plugins/Apps, web search, skill catalog injection and bundled
+skills. Claude uses safe mode, empty setting sources/tools and one turn.
+Claude also disables nonessential traffic, including session-title inference.
+Both replace the development instructions with a short fixed instruction and
+select low effort on the same model. A model that rejects low effort fails
+without retry. Normal tasks and resume retain their existing model/approval
+behaviour.
+
+Authentication homes, proxy/CA and mandatory management policy are retained.
+Wake removes API/provider and normal-model environment overrides from the
+child only. Windows/Linux verify existing subscription file credentials.
+On macOS, Claude uses `auth status --json` metadata and accepts only first-party
+Claude.ai subscriptions; Codex checks existing ChatGPT file credentials first,
+or uses `login status` with the native `keyring` store when no auth file exists.
+The validated store is also used by the actual wake request. API/provider or
+unreadable/invalid file credentials never fall back to Keychain. Unknown status
+output fails closed. These status commands use the selected CLI and wake timeout;
+they do not send a model prompt. Their output is never printed or saved.
+Unattended Keychain access and native macOS status behavior remain unverified.
+No credentials are copied/moved, login initiated or persistent setting changed.
+The vendor CLI may refresh credentials or update its own metadata cache.
+
+
+Authentication, mandatory policy/hooks and internal initialization can remain.
+Local discovery and context injection are different: Codex can still inspect
+user skill roots even with its catalog disabled. See [verification](docs/VERIFICATION.md)
+for measured residual discovery and the limits of the live observations.
+
+Wake rejects `--resume`, prompts, `--prompt-file`, explicit `--cd`/`--add-dir`,
+`--headless=false`, `--new-console=true` and `--close-on-exit=true`.
+`--headless` and `--no-auto-approve` are redundant and allowed; wake never adds
+normal automatic approval. `--wake-text`/`--wake-timeout` without wake are errors.
+Input errors return 2, launch/authentication failures 1, timeout 124, cancellation
+130; normal completion returns the child exit code. Ctrl+C remains active after
+launch. Cleanup terminates only this wake's process group/job and removes its
+temporary directory after the child exits. Forced supervisor termination or OS
+shutdown can leave temporary files; Unix children that deliberately detach from
+the process group are outside that group.
+
+The bundled source-tree build includes this feature; the published v0.2.0 ZIP
+above predates wake. This change does not publish a release.
+
 ## Use
 
 Run `dist\agent-at.exe` in PowerShell from the project directory:
