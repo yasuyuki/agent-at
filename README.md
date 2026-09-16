@@ -22,11 +22,11 @@ the exact tested scope and remaining checks. Real Claude headless scheduled
 execution and same-session resume passed on Linux; Claude interactive and
 Windows desktop behavior remain unverified.
 
-## Keep a reservation after closing the terminal (unreleased, Windows)
+## Keep a reservation after closing the terminal (unreleased)
 
 The candidate for [Issue #3](https://github.com/yasuyuki/agent-at/issues/3)
 adds `--persist`, `--list`, and `--remove`. It depends on the unreleased wake
-change; the v0.2.0 download does **not** contain these options. Initial Windows native acceptance failed; the repair awaits re-acceptance.
+change; the v0.2.0 download does **not** contain these options. Windows native registration/execution/cleanup passed at `f9d96de`; terminal-close/reboot/lock checks remain pending.
 See [verification](docs/VERIFICATION.md#persistent-jobs--issue-3).
 
 ```powershell
@@ -54,8 +54,9 @@ Persist is always **headless**. `--headless` is allowed; `--headless=false`,
 requests keep their usual settings and approval policy; wake retains its
 minimal policy, execution timeout and clean CLI default model when omitted.
 `--list` and `--remove` are exclusive with reservation flags and do not resolve
-an installed agent or inspect authentication. Linux/macOS, including WSL Linux
-binaries, reject these persistence operations. Foreground timers are unchanged.
+an installed agent or inspect authentication. Foreground timers are unchanged.
+Linux uses its own systemd user manager, including inside WSL if available;
+there is no bridge to Windows Task Scheduler.
 
 The registration output gives a job ID, task name, resolved time, agent/model
 policy and private data directory. Exit 0 means **registered**, not that a model
@@ -87,6 +88,48 @@ at execution; expired/unsupported wake authentication fails without login or
 an API/provider fallback. No Windows password, elevation or new service is
 required; Task Scheduler permission and working CLI authentication/network
 access are prerequisites. Unsupported saved schemas are preserved and rejected.
+
+## Linux and macOS persistent reservations (unreleased)
+
+[Linux #5](https://github.com/yasuyuki/agent-at/issues/5) and
+[macOS #6](https://github.com/yasuyuki/agent-at/issues/6) extend the same CLI:
+
+```sh
+agent-at --persist --wake --agent claude --at 05:00
+agent-at --persist --at 23:30 --prompt-file request.txt
+agent-at --persist --at 23:30 --resume SESSION_ID
+agent-at --list
+agent-at --remove JOB_ID
+```
+
+Normal requests, resume, wake timeout, private logs/results and public removal
+reuse the common runner. These features are not in the v0.2.0 release.
+
+**Linux:** persistent systemd user `.timer` and `.service` files. Registration
+requires an available `systemctl --user` manager. Timer files survive reboot;
+execution needs that manager running at the scheduled time (normally after
+sign-in). Closing terminals or locking the screen does not itself stop it.
+No system service, root privileges, automatic linger, wake-from-sleep, custom
+daemon or retry is installed. `Persistent=false` avoids catch-up after manager
+inactivity, but a calendar timer can fire after a running machine resumes from
+suspend or its clock moves forward. This differs from Windows.
+
+**macOS:** per-user LaunchAgents require the user's GUI login domain. Plists
+survive reboot and are loaded at GUI sign-in. SSH-only sessions without that
+domain cannot register. `launchd` calendar events have minute precision and no
+year field: the helper checks the saved absolute date and only waits the
+remaining seconds when activated within the target minute. Activation after
+the due time in the saved calendar year can catch up (including login/resume);
+a later calendar year is missed. Start records prevent repeated model requests
+from login or annual calendar activations. Keep the system timezone unchanged
+until the job runs: launchd cannot bind the trigger to the saved offset.
+No LaunchDaemon, root privileges or automatic login is configured.
+
+Keep agent-at and the selected CLI at their saved absolute paths, and keep
+work directories and existing authentication accessible. Scheduler registration
+is not a model-success check. Native Linux and macOS acceptance is reported
+separately in [verification](docs/VERIFICATION.md); compilation is not proof
+of login, reboot, screen-lock or real-model execution.
 
 ## One minimal request at a scheduled time (unreleased)
 
@@ -123,16 +166,19 @@ without retry. Normal tasks and resume retain their existing model/approval
 behaviour.
 
 Authentication homes, proxy/CA and mandatory management policy are retained.
-To avoid silently using a paid API/provider route, wake checks existing
-subscription file credentials read-only before launch and removes API/provider
-and normal-model environment overrides from the child only. Codex requires
-ChatGPT `auth.json` file credentials; Claude requires subscription OAuth file
-credentials without gateway/federation authentication. Keychain-only, unknown,
-relative authentication-home paths and host-managed provider modes are refused.
-Claude wake on macOS is currently unsupported because its keychain route cannot
-be verified this way. No credentials are copied or moved, and no login or
-persistent setting change is performed by agent-at. The vendor CLI can still
-refresh credentials and update its own authentication/metadata cache.
+Wake removes API/provider and normal-model environment overrides from the
+child only. Windows/Linux verify existing subscription file credentials.
+On macOS, Claude uses `auth status --json` metadata and accepts only first-party
+Claude.ai subscriptions; Codex checks existing ChatGPT file credentials first,
+or uses `login status` with the native `keyring` store when no auth file exists.
+The validated store is also used by the actual wake request. API/provider or
+unreadable/invalid file credentials never fall back to Keychain. Unknown status
+output fails closed. These status commands use the selected CLI and wake timeout;
+they do not send a model prompt. Their output is never printed or saved.
+Unattended Keychain access and native macOS status behavior remain unverified.
+No credentials are copied/moved, login initiated or persistent setting changed.
+The vendor CLI may refresh credentials or update its own metadata cache.
+
 
 Authentication, mandatory policy/hooks and internal initialization can remain.
 Local discovery and context injection are different: Codex can still inspect

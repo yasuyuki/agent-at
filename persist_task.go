@@ -48,7 +48,7 @@ func (e *taskCreateError) Unwrap() error {
 	return e.Err
 }
 
-var errTaskSchedulerUnsupported = errors.New("persistent task scheduling is supported only on Windows")
+var errTaskSchedulerUnsupported = errors.New("persistent task scheduling is requires Windows, Linux systemd user timers, or macOS launchd")
 
 type xmlNode struct {
 	XMLName xml.Name
