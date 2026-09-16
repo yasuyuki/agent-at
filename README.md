@@ -1,14 +1,16 @@
 # agent-at
 
 Run an installed, authenticated coding agent once at a local time. The timer needs no
-external runtime. Windows 10/11 x64 is the primary target; Linux and macOS are
-also supported by the source. [日本語](README.ja.md)
+external runtime. Windows 10/11 x64 is the primary target; Linux and macOS binaries are also available. [日本語](README.ja.md)
 
-**v0.2.0** — Codex and Claude Code scheduling, session resume, and inherited terminals.
-Download the [Windows x64 ZIP](https://github.com/yasuyuki/agent-at/releases/download/v0.2.0/agent-at-windows-x64.zip)
-and [checksums](https://github.com/yasuyuki/agent-at/releases/download/v0.2.0/SHA256SUMS)
-from the [release page](https://github.com/yasuyuki/agent-at/releases/tag/v0.2.0).
-Extract the ZIP before use; the executable is `dist/agent-at.exe`.
+**v0.3.0** — persistent reservations on Windows, Linux and macOS, plus minimal
+one-shot wake requests for Codex and Claude Code.
+Download platform binaries, source and SHA-256 checksums from the
+[release page](https://github.com/yasuyuki/agent-at/releases/tag/v0.3.0).
+Windows x64 uses `dist/agent-at.exe`; Linux x64 and macOS Intel/Apple Silicon
+archives contain `dist/agent-at`. Extract the archive before use and keep its
+location stable while reservations exist. macOS binaries are not Developer ID signed or notarized; native Mac execution/Keychain acceptance remains unverified.
+
 The earlier `codex-at` preview remains available in the release history.
 
 For the earlier Codex build, Windows 11 native automated tests and five basic
@@ -22,11 +24,10 @@ the exact tested scope and remaining checks. Real Claude headless scheduled
 execution and same-session resume passed on Linux; Claude interactive and
 Windows desktop behavior remain unverified.
 
-## Keep a reservation after closing the terminal (unreleased)
+## Keep a reservation after closing the terminal (v0.3.0)
 
-The candidate for [Issue #3](https://github.com/yasuyuki/agent-at/issues/3)
-adds `--persist`, `--list`, and `--remove`. It depends on the unreleased wake
-change; the v0.2.0 download does **not** contain these options. Windows native registration/execution/cleanup passed at `f9d96de`; terminal-close/reboot/lock checks remain pending.
+The implementation for [Issue #3](https://github.com/yasuyuki/agent-at/issues/3)
+adds `--persist`, `--list`, and `--remove`, available in v0.3.0. Windows native registration/execution/cleanup passed at `f9d96de`; terminal-close/reboot/lock checks remain pending.
 See [verification](docs/VERIFICATION.md#persistent-jobs--issue-3).
 
 ```powershell
@@ -89,7 +90,7 @@ an API/provider fallback. No Windows password, elevation or new service is
 required; Task Scheduler permission and working CLI authentication/network
 access are prerequisites. Unsupported saved schemas are preserved and rejected.
 
-## Linux and macOS persistent reservations (unreleased)
+## Linux and macOS persistent reservations (v0.3.0)
 
 [Linux #5](https://github.com/yasuyuki/agent-at/issues/5) and
 [macOS #6](https://github.com/yasuyuki/agent-at/issues/6) extend the same CLI:
@@ -131,7 +132,7 @@ is not a model-success check. Native Linux and macOS acceptance is reported
 separately in [verification](docs/VERIFICATION.md); compilation is not proof
 of login, reboot, screen-lock or real-model execution.
 
-## One minimal request at a scheduled time (unreleased)
+## One minimal request at a scheduled time (v0.3.0)
 
 ```powershell
 .\dist\agent-at.exe --wake --at 05:00
@@ -196,8 +197,7 @@ temporary directory after the child exits. Forced supervisor termination or OS
 shutdown can leave temporary files; Unix children that deliberately detach from
 the process group are outside that group.
 
-The bundled source-tree build includes this feature; the published v0.2.0 ZIP
-above predates wake. This change does not publish a release.
+Wake is included in v0.3.0; the older v0.2.0 ZIP predates this feature.
 
 ## Use
 
