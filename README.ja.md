@@ -1,10 +1,14 @@
 # agent-at
 
-## 端末を閉じても予約を保持する（未リリース）
+**v0.3.0** を公開しています。[ダウンロードとSHA-256](https://github.com/yasuyuki/agent-at/releases/tag/v0.3.0)。
+Windows x64、Linux x64、Mac Intel／Apple Silicon向け。展開後はWindowsの `dist/agent-at.exe`、
+Linux／Macの `dist/agent-at` を使います。Mac実機・Keychainは未検証で、MacバイナリはDeveloper ID未署名・未公証です。
+予約がある間は実行ファイルの場所を変えないでください。
 
-[Issue #3](https://github.com/yasuyuki/agent-at/issues/3) の候補実装で
-`--persist`／`--list`／`--remove` を追加しています。未統合のwake実装に依存し、
-v0.2.0配布版には含まれません。Windowsはf9d96deで予約・実行・清掃が合格し、全端末終了・再起動・ロック等は未受入です。
+## 端末を閉じても予約を保持する（v0.3.0）
+
+[Issue #3](https://github.com/yasuyuki/agent-at/issues/3) の実装で
+`--persist`／`--list`／`--remove` を追加し、v0.3.0に含めています。Windowsはf9d96deで予約・実行・清掃が合格し、全端末終了・再起動・ロック等は未受入です。
 [検証記録](docs/VERIFICATION.md#persistent-jobs--issue-3)に実施範囲と残件を記載しています。
 
 ```powershell
@@ -60,11 +64,7 @@ Windowsパスワード保存・昇格・常駐サービスは不要ですが、�
 ソースは Linux／macOS でも利用でき、対話型は現在のターミナルで動作します。
 [English](README.md)
 
-**v0.2.0** — Codex／Claude Code の予約、会話再開、起動元ターミナルの継承に対応。
-[Windows x64 ZIP](https://github.com/yasuyuki/agent-at/releases/download/v0.2.0/agent-at-windows-x64.zip)と
-[チェックサム](https://github.com/yasuyuki/agent-at/releases/download/v0.2.0/SHA256SUMS)は
-[リリースページ](https://github.com/yasuyuki/agent-at/releases/tag/v0.2.0)から取得できます。
-ZIP を展開して `dist/agent-at.exe` を使用します。旧 `codex-at` プレビューはリリース履歴に残しています。
+旧 `codex-at` プレビューとv0.2.0はリリース履歴に残しています。
 
 旧 Codex 版の Windows 11 ネイティブ自動試験と基本対話5手順は確認済みです。ヘッドレスでは、
 無害なシェル操作1件の自動レビュー・許可も確認しました。2026-09-10 に本人が Windows 10 の
@@ -75,7 +75,7 @@ Claude のヘッドレス予約実行と同一会話の再開は Linux の実 CL
 Claude の対話型と Windows 実画面の動作は未確認です。
 
 
-## 指定時刻に最小要求を1回送る（未リリース）
+## 指定時刻に最小要求を1回送る（v0.3.0）
 
 ```powershell
 .\dist\agent-at.exe --wake --at 05:00
@@ -123,8 +123,7 @@ close-on-exit=trueは併用不可です。headlessとno-auto-approveは冗長指
 子の終了後に一時領域を削除します。親の強制終了やOS停止では一時領域が残り得ます。
 Unixで意図的にprocess groupから離脱した子はgroupの対象外です。
 
-source treeの同梱buildにはwakeが入ります。上記公開v0.2.0 ZIPには含まれません。
-この変更ではreleaseを公開しません。
+wakeはv0.3.0に含まれます。旧v0.2.0 ZIPには含まれません。
 
 ## 使い方
 
@@ -281,7 +280,7 @@ MIT ライセンス。exe に含む Go runtime・標準ライブラリの
 [ライセンス表示](docs/GO-LICENSE.txt)も配布物に同梱します。
 OpenAI／Anthropic の公式製品ではありません。
 
-## Linux / macOS の永続予約（未リリース）
+## Linux / macOS の永続予約（v0.3.0）
 
 Linux #5・macOS #6は同じ `--persist`／`--list`／`--remove` を使い、
 通常要求・resume・wake・timeout・結果保存・清掃を共通処理で実行します。

@@ -1,5 +1,34 @@
 # Verification and remaining acceptance
 
+## v0.3.0 release — 2026-09-16
+
+The user explicitly requested v0.3.0 after reviewing the native limitations.
+Wake PR #2, Windows persistence PR #4 and Linux/macOS PR #7 were integrated
+through their registered dependency chain into main. Historical no-release and
+no-merge statements below describe their original development scopes; they do
+not describe this release. Native acceptance gaps remain open in Issues #1/#3/#5/#6.
+
+The release packages Windows x64, Linux x64, macOS Intel and Apple Silicon
+executables built with Go 1.27.1, `CGO_ENABLED=0`, `-trimpath -buildvcs=false`.
+The tracked `dist/agent-at.exe` and `dist/SHA256SUMS` are refreshed. Every platform
+archive contains its executable, executable checksum, README translations,
+release/verification notes and license notices. `agent-at-source.zip` is a Git
+archive of the exact release commit. The asset `SOURCE-COMMIT.txt` identifies
+that commit; top-level `SHA256SUMS` covers the platform/source archives and
+source-commit record. Archive integrity, source correspondence and public
+re-download checks are recorded in the release result on Issue #5.
+
+Release checks: full Linux tests/race/vet; Windows amd64 and Darwin amd64/arm64
+vet/test cross-compilation; four application builds. Native Linux timed execution
+is unavailable in this isolated user-manager environment. Mac native scheduling,
+Keychain and GUI behavior remain unverified; the user explicitly accepted the
+absence of Mac testing. Windows native results apply to the accepted `f9d96de`
+ancestor as recorded in Issue #3, not a new native run of the release binary.
+No owner reboot/logoff/lock, new authentication or real model request is performed
+for publication. Windows is unsigned; Mac binaries are not Developer ID signed
+or notarized. Publishing does not close the remaining native acceptance issues.
+
+
 ## Linux and macOS persistence / Issues #5 and #6
 
 Contracts/results: [Linux #5](https://github.com/yasuyuki/agent-at/issues/5),
