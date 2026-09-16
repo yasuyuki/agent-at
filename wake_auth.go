@@ -82,6 +82,10 @@ func checkWakeAuth(agent string, env []string) error {
 	if nonnull(auth.Gateway) || auth.OAuth == nil || auth.OAuth.Access == "" {
 		return errors.New("wake requires existing Claude subscription OAuth file authentication without a saved gateway")
 	}
+	return checkClaudeProviderProfile(values, home)
+}
+
+func checkClaudeProviderProfile(values map[string]string, home string) error {
 	// The Anthropic federation profile resolver is independent of setting-sources
 	// and can take precedence over subscription OAuth even in safe mode.
 	profileRoot := values["ANTHROPIC_CONFIG_DIR"]

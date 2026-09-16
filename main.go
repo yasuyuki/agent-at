@@ -37,6 +37,9 @@ type options struct {
 	Wake        bool
 	WakeText    string
 	WakeTimeout time.Duration
+	Persist     bool
+	List        bool
+	Remove      string
 }
 
 func parseOptions(args []string, now time.Time, out io.Writer) (options, error) {
@@ -44,6 +47,9 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	var at, promptFile string
 	f := flag.NewFlagSet("agent-at", flag.ContinueOnError)
 	f.SetOutput(out)
+	f.BoolVar(&o.Persist, "persist", false, "Windows/Linux/macOS: save a one-time headless OS task, then exit (Linux requires systemd user manager)")
+	f.BoolVar(&o.List, "list", false, "Windows/Linux/macOS: list this user's persistent jobs and saved results")
+	f.StringVar(&o.Remove, "remove", "", "Windows/Linux/macOS: cancel an unstarted job or delete its saved results; refuses running jobs")
 	f.StringVar(&at, "at", "", "Local HH:mm[:ss] or YYYY-MM-DDTHH:mm[:ss]")
 	f.BoolVar(&o.Wake, "wake", false, "Send one minimal headless request; skips user settings (model: clean CLI default)")
 	f.StringVar(&o.WakeText, "wake-text", "ok", "Literal one-line reply requested by --wake")
@@ -60,20 +66,31 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	f.BoolVar(&o.NewConsole, "new-console", false, "Open a dedicated Windows console instead of inheriting the current terminal")
 	f.BoolVar(&o.Close, "close-on-exit", false, "Close the dedicated console after the agent exits")
 	f.Usage = func() {
-		fmt.Fprintln(out, "Usage: agent-at --at TIME [options] -- \"prompt\"\n       agent-at --at TIME [options] --prompt-file FILE\n       agent-at --resume SESSION_ID [--at TIME] [options]\n       agent-at --wake --at TIME [--agent codex|claude] [--model MODEL]\n\nPlace options before the single prompt argument. Ctrl+C cancels while waiting.\nWake skips user settings; omitted model uses clean CLI default. Even a minimal\nrequest consumes usage; quota timer start/reset is not guaranteed. Keep the timer\nopen; it does not wake a sleeping PC. Wake policy: Codex 0.154.0 / Claude 2.1.268.\nExisting subscription file authentication is required; keychain-only/unknown\nproviders fail. Mandatory auth/policy and internal discovery may remain.\nUnsupported CLI options fail without retry.")
+		fmt.Fprintln(out, "Usage: agent-at --at TIME [options] -- \"prompt\"\n       agent-at --at TIME [options] --prompt-file FILE\n       agent-at --resume SESSION_ID [--at TIME] [options]\n       agent-at --wake --at TIME [--agent codex|claude] [--model MODEL]\n\nPlace options before the single prompt argument. Without --persist, Ctrl+C cancels while waiting.\nWake skips user settings; omitted model uses clean CLI default. Even a minimal\nrequest consumes usage; quota timer start/reset is not guaranteed. Without --persist keep the timer\nopen; it does not wake a sleeping PC. Wake policy: Codex 0.154.0 / Claude 2.1.268.\nExisting subscription file authentication is required; keychain-only/unknown\nproviders fail. Mandatory auth/policy and internal discovery may remain.\nUnsupported CLI options fail without retry.")
 		f.PrintDefaults()
+		fmt.Fprintln(out, "\nWith --persist, --at is required even for resume. Registration is not execution\nsuccess. After registration the terminal may close; the PC must be awake and the\nsame user signed in (screen lock is OK). No catch-up after sleep, power-off or\nsign-out. Always headless; no console restoration. --list / --remove JOB_ID\nmanage private payload/results under LOCALAPPDATA/agent-at/jobs. Keep agent-at,\nthe selected CLI and working paths in place. Terminal-only secrets are not saved.")
 	}
 	if err := f.Parse(args); err != nil {
 		return o, err
 	}
 	set := map[string]bool{}
 	f.Visit(func(v *flag.Flag) { set[v.Name] = true })
+	management, err := validatePersist(o, set, f.NArg(), runtime.GOOS)
+	if err != nil {
+		return o, err
+	}
+	if management {
+		return o, nil
+	}
 	if err := validateWake(o, set, f.NArg()); err != nil {
 		return o, err
 	}
 	if o.Wake {
 		o.Headless = true
 		o.Prompt = wakePrompt(o.WakeText)
+	}
+	if o.Persist {
+		o.Headless = true
 	}
 	if o.Agent != "codex" && o.Agent != "claude" {
 		return o, errors.New("--agent must be codex or claude")
@@ -87,8 +104,10 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	if resumeSet && (strings.TrimSpace(o.Resume) == "" || o.Resume == "-" || !utf8.ValidString(o.Resume) || strings.ContainsAny(o.Resume, "\x00\r\n")) {
 		return o, errors.New("--resume requires a nonempty agent session ID")
 	}
-	var err error
 	if at == "" {
+		if o.Persist {
+			return o, errors.New("--persist requires a nonempty --at")
+		}
 		if !resumeSet {
 			return o, errors.New("--at is required for a new task")
 		}
@@ -181,6 +200,9 @@ func absoluteDir(p string) (string, error) {
 }
 func main() { os.Exit(run(os.Args[1:])) }
 func run(args []string) int {
+	if len(args) > 0 && args[0] == "--internal-persist" {
+		return persistentChild(args[1:])
+	}
 	if len(args) > 0 && args[0] == "--internal-console" {
 		return consoleChild(args[1:])
 	}
@@ -191,6 +213,9 @@ func run(args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "agent-at:", err)
 		return 2
+	}
+	if o.Persist || o.List || o.Remove != "" {
+		return runPersistent(o)
 	}
 	if o.Wake {
 		return scheduleWake(o)

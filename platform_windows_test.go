@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -146,6 +147,28 @@ func TestCmdRoundTrip(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestCmdArgumentConstructionKeepsEmptyValuesLiteral(t *testing.T) {
+	cmd, err := platformCommand(`C:\tools\agent.cmd`, []string{"--setting-sources", "", "--tools", "", "tail"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range cmd.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		if strings.EqualFold(name, "AGENT_AT_ARG_2") || strings.EqualFold(name, "AGENT_AT_ARG_4") {
+			t.Fatalf("empty argument retained as environment value: %q", entry)
+		}
+	}
+	line := cmd.SysProcAttr.CmdLine
+	for _, index := range []int{2, 4} {
+		if strings.Contains(line, "%AGENT_AT_ARG_"+strconv.Itoa(index)+"%") {
+			t.Fatalf("empty argument %d retained as environment reference: %q", index, line)
+		}
+	}
+	if strings.Count(line, `""`) < 2 {
+		t.Fatalf("empty arguments missing from command line: %q", line)
 	}
 }
 func TestConsoleLaunchAndCleanup(t *testing.T) {

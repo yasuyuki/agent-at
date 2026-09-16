@@ -1,5 +1,227 @@
 # Verification and remaining acceptance
 
+## Linux and macOS persistence / Issues #5 and #6
+
+Contracts/results: [Linux #5](https://github.com/yasuyuki/agent-at/issues/5),
+[macOS #6](https://github.com/yasuyuki/agent-at/issues/6). This dependent candidate
+starts at Windows `f9d96deb3fb112c21100dcc77151812739352e0c` (PR #4);
+main integration and release are not included.
+
+### Implemented and host-verified
+
+- Linux: persistent systemd user unit pair, read-back with exact owned files,
+  loaded paths/no drop-ins, literal path escaping, standard `/usr/bin/env --`
+  for launcher paths systemd cannot accept as its first executable, no runtime
+  cap for normal tasks, and public removal including disabled/partial units.
+- macOS: private LaunchAgent plist, GUI UID domain only, literal argv array,
+  saved calendar-year/minute/seconds dispatch guard, common once-only store.
+  Exact private plist validation plus successful `launchctl print` is the
+  read-back evidence; diagnostic print is **not** parsed as a complete live
+  configuration proof. Ambiguous/missing registrations retain data for review.
+- Unix execution waits for the registration lock; management remains
+  nonblocking and rejects active execution. Common result/log and wake runner
+  tests cover normal/resume, timeout, duplicate prevention and descendant cleanup.
+- macOS wake: Claude subscription metadata via safe-mode/empty-setting-source
+  `auth status --json`; Codex existing ChatGPT file auth or explicit native
+  `keyring` status propagated into request argv. Invalid/API file auth never
+  falls back. Status output is private, bounded, fail-closed and uses the existing
+  wake timeout/process-group cleanup. Unknown versions/status schemas fail closed.
+
+Host: isolated Linux amd64, existing Go 1.27.1. `go test ./...`, `go vet ./...`,
+`go test -race ./...` passed. Windows amd64 and Darwin amd64/arm64 vet,
+test cross-compilation and application builds passed. Offline
+`systemd-analyze verify --user` passed using disposable unit/runtime directories;
+this does not start a user manager or prove timed execution.
+
+The existing Claude 2.1.268 CLI accepted global
+`--safe-mode --setting-sources '' auth status --json` against an isolated
+synthetic settings directory. Its fake `apiKeyHelper` marker was not created;
+status reported no login. Without those flags it reported `api_key_helper`.
+No real credential or model request was used in this check. Codex 0.154.0
+supports the `keyring` configuration value; its login-status command does not
+support `--ignore-user-config` (the actual exec request retains that flag).
+
+### Native acceptance still outstanding
+
+`AGENT_AT_PERSIST_NATIVE=1 go test -run '^TestPersistentUnixSchedulerNative$' -v .`
+was attempted on Linux and stopped **before any registration**, because the
+user bus/runtime directory is unavailable. No native fixture jobs were created.
+The same opt-in test is available on macOS. It builds a disposable fake CLI,
+checks process-exit-only timed execution, once-only marker, logs/exit result,
+public removal and absence of private job data; failed fixtures are retained.
+
+Native systemd execution, all-terminal closure, reboot/login/lock/suspend,
+macOS bootstrap/bootout and unattended Keychain/real wake remain **unverified**.
+The user explicitly accepts unavailable Mac testing; this is implementation
+coverage, not native acceptance. Linux user-manager repair, crossing isolation,
+real login/auth changes, reboot/logoff and operational recurring tasks are not
+performed. README documents Linux suspend catch-up and macOS calendar/year,
+login catch-up and timezone limitations.
+
+State uses `$HOME/.local/state/agent-at/jobs` (Linux) or
+`$HOME/Library/Application Support/agent-at/jobs` (macOS). Scheduler files use
+`$HOME/.config/systemd/user` or `$HOME/Library/LaunchAgents`; XDG overrides do not
+move these stores. HOME is fixed in the scheduled action. Owner/non-writable
+parents and private job files are required; symlinks are refused. Preserve these
+paths and executable/CLI/work paths while reservations exist.
+
+Primary platform references: [systemd timer manual](https://github.com/systemd/systemd/blob/main/man/systemd.timer.xml),
+[Apple LaunchAgents](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+
+
+## Persistent jobs / Issue #3
+
+Execution contract and result authority:
+[Issue #3](https://github.com/yasuyuki/agent-at/issues/3).
+The candidate is based on wake PR #2 (`024a7da11fd6521e6950e3e15ec1372c64dc9008`),
+with a separate dependent PR targeting `feat/wake-1`. No merge, release, tag,
+distributed executable or permanent operational task is part of this change.
+
+### Implementation and evidence map
+
+| Contract | Implementation and reproducible evidence |
+| --- | --- |
+| Original Windows CLI, headless constraints, list/remove independence | `main.go`, `TestPersistFlagContract`; existing scheduling/resume/wake tests remain in `go test ./...` |
+| Fixed time, prompt-file snapshot, private JSON and environment allowlist | `persist.go`, `TestPersistRegistrationSnapshot`, `TestPersistEnvironmentSnapshot`, `TestPersistRejectSavedSchemaAndOwner` |
+| Save before OS registration, failure/uncertainty handling | `TestPersistRegistrationFailures`, `TestPersistRegistrationSerializesRemoval`; no CLI is started by registration tests |
+| One OS time trigger, InteractiveToken/LeastPrivilege, no missed-run catch-up | Shared `taskXML`/`validateTaskXML` and `TestTaskXML*`/`TestValidateTaskXML*`; Windows backend uses standard system-directory PowerShell COM only for management, with structured JSON stdin/HRESULT results and TASK_CREATE |
+| Once-only start, crash/result-unknown preservation, cancel/start exclusion | `TestPersistExecuteOnceAndResults`, `TestPersistCancelStartRace`, `TestPersistFailedDeleteCancelsLocally`; exclusive durable start marker plus OS-released file lock held through child exit/deletion |
+| Headless argv/stdin, cwd, result/log retention and exit code | `TestPersistHeadlessRealHelper` runs both fake vendor CLIs and resume through the shared `prepare` implementation |
+| Wake one-run/auth/environment/Job handling | Shared `prepareWake`, `checkWakeAuth`, `wakeEnvironment`, `runWakeResult`; `TestPersistWakeRebuildsAndAuthenticatesAtExecution` plus existing `TestWake*` tests. No second wake runner |
+| Private storage | Windows known-folder lookup, current SID, protected current-user DACL and reparse rejection in `persist_platform_windows.go`; native-only platform tests cover lock exclusion/deletion and DACL rejection |
+
+Registration holds the same lifecycle lock as execution/removal. If registration
+crosses its scheduled time, its retained job is reported as unconfirmed rather
+than successful. `started.json` is created exclusively and flushed before child
+launch. A missing result after wrapper/PC termination does not prove the model
+request was absent and never causes replay. An incomplete result is reported
+unknown. This does not offer exactly-once acceptance by an external service.
+
+Read-back verifies the saved principal, trigger, action and required settings.
+A definite TASK_CREATE error removes only the newly created payload. Transport
+or read-back uncertainty retains the ID/task/data and reports the recovery path;
+there is no automatic re-registration. A failed removal retains cancellation
+state, preventing later start. Prompt or credential bytes are not in Task XML.
+
+### Linux and cross-target checks
+
+From the source checkout, with the existing Go toolchain:
+
+```sh
+go test ./...
+go vet ./...
+go test -race ./...
+```
+
+Windows amd64 `go vet ./...`, test cross-compilation and application build,
+plus Linux amd64/macOS arm64 application builds, are run for the candidate.
+The exact commands, exit statuses and revision are recorded in Issue #3's
+result comment. Cross-compilation does not exercise Task Scheduler, DACLs,
+PowerShell COM, Windows Job nesting or a desktop session.
+
+### Windows native acceptance still required
+
+The [first Windows return](https://github.com/yasuyuki/agent-at/issues/3#issuecomment-5683729635)
+tested `f9eaff1` on Windows 11 x64 25H2, Go 1.27.1 and Node 26.5.0 in a
+non-elevated Medium-integrity owner session. Native vet/build passed, but
+the suite failed `TestWakeCmdEmptyArgsAndLiteral` and both actual Scheduler
+subtests failed XML read-back. The receiver cleaned both trial tasks/data.
+Native race could not run with the existing `CGO_ENABLED=0` setup; no toolchain
+installation is required merely to repeat that unavailable check.
+
+The repair accepts the UTF-16 declaration on an already-decoded COM XML string
+without decoding its JSON-transported UTF-8 bytes again. Unknown encodings and
+changed task policies still fail validation. See `TestTaskXMLCOMStringEncodingDeclaration`.
+Empty `.cmd` arguments now use literal `""` instead of an undefined environment
+reference; the existing native argv round-trip test remains the acceptance.
+The Scheduler test registers cleanup before registration, identifies its own
+records by the unique fixture paths even if no success message is produced,
+and retains fixture files on failure for recovery. It does not delete unrelated
+jobs or bypass public removal checks. The repair still needs native re-acceptance.
+
+Sources for the string boundary: [RegisteredTask.XML is a string](https://learn.microsoft.com/en-us/windows/win32/taskschd/registeredtask-xml)
+and [Go XML decoder charset handling](https://pkg.go.dev/encoding/xml#Decoder).
+
+The [second Windows return](https://github.com/yasuyuki/agent-at/issues/3#issuecomment-5683970457)
+confirmed `c1cb032` passes the native empty-argument test, full normal suite and
+vet. Scheduler read-back/remove still failed because its export omits default
+values. Both trial jobs were cleaned by the receiver. Saved and OS exit values
+were 23 in both jobs, a limited observation rather than complete E2E acceptance.
+
+The next repair resolves omitted values using the
+[Microsoft settings/trigger schema](https://github.com/MicrosoftDocs/win32/blob/docs/desktop-src/TaskSchd/task-scheduler-schema.md)
+and [default low privilege context](https://learn.microsoft.com/en-us/windows/win32/taskschd/security-contexts-for-running-tasks).
+RunLevel defaults to LeastPrivilege, both Enabled values to true, and the four
+availability/wake/idle/network conditions to false. IgnoreNew may also be
+omitted. Battery restrictions default to true and the execution limit to PT72H,
+so their omission still fails the requested false/PT0S contract. Explicit
+empty, duplicate, malformed or conflicting values are not defaulted. Owner,
+logon type, action and time remain mandatory and exact.
+`TestTaskXMLOmittedDefaults` reconstructs the reported omissions synthetically;
+`TestOmittedXMLRegistrationListAndRemoval` tests the shared lifecycle against
+that representation. These are not captured native XML or a new native pass.
+Repeat the existing native order on the new candidate before later acceptance.
+
+Use a **native Windows standard-user session** with Go and the candidate source
+revision from Issue #3, preserving unrelated checkout changes. The existing
+Go commands in the README apply. From that checkout in PowerShell:
+
+```powershell
+go test ./...
+go vet ./...
+$env:AGENT_AT_PERSIST_NATIVE = '1'
+go test -run '^TestPersistentTaskSchedulerNative$' -v .
+Remove-Item Env:AGENT_AT_PERSIST_NATIVE
+```
+
+`TestPersistentTaskSchedulerNative` is opt-in because it registers short-lived
+OS tasks. It builds the real application and the network-free
+`testdata/persist-agent` fixture, registers through the public CLI, observes that
+registration exits before the fake agent starts, checks saved logs/exit 23,
+checks duplicate execution, then removes its own jobs. A Node-backed `.cmd`
+case runs when Node is on PATH; a skip leaves that acceptance incomplete.
+All fixture paths are temporary, no real authentication or model request is
+used, and failures report the affected job for cleanup through `--remove`.
+The test itself remains alive as an observer: it proves registration-process
+exit, **not closure of every terminal**. Native test code is cross-compiled
+here but has not been executed here.
+
+The receiving Windows agent must record the following separately in Issue #3:
+
+1. Build the application and the existing fake fixture into a retained disposable
+   test directory. Register a short future normal fake request, note its ID and
+   private directory, then close the registering terminal. With no original
+   terminal remaining, verify after the time that exactly one marker, the
+   result and logs exist. Observe the waiting interval for absent agent-at,
+   fake CLI and MCP processes. Remove that specific job afterward.
+2. Exercise `.exe` and `.cmd`/Node scheduling under the same signed-in standard
+   user, preserved PATH/authentication roots, Unicode/spaced/shell-character
+   paths, and confirm the Task Scheduler's last result agrees with the child
+   exit code. Native tests cover part of this; record skipped cases explicitly.
+3. Execute a fake wake from an actual scheduler parent Job, with synthetic
+   file-auth fixtures only, and verify timeout and descendant cleanup using
+   the existing Windows Job tests as the expected behavior. Ordinary direct
+   Job tests alone do not prove nested Task Scheduler execution.
+4. On an available disposable Windows VM, test reservation before reboot then
+   sign-in before the time, and execution while screen-locked. Test a missed
+   time while unavailable without next-day/catch-up requests. Do not reboot,
+   sign out or lock the user's working PC without explicit authorization.
+   With no suitable VM, retain these as unverified.
+5. With already available subscription file authentication, run only the
+   minimum scheduled real wake necessary to verify the new environment and
+   scheduler path. Do not repeat Issue #1's full measurements, create API
+   credentials, change authentication or install permanent tasks. Record
+   unsupported/expired authentication as a failure, without fallback.
+
+The Linux source environment has no Windows desktop execution capability or
+authorized outward connection path. The registered Windows controller is the
+proposed receiver; availability in the catalog is not proof of reachability,
+receipt or successful execution. Keep the PR Draft and Issue open until the
+required native acceptance is returned. Sanitized result summaries, revisions,
+OS/CLI versions and test pass/fail belong in Issue #3; private raw prompts,
+authentication data and CLI logs do not. Issue #1 only receives a relationship
+reference; its existing acceptance remains separate.
+
 ## Wake / Issue #1 (2026-09-15, unreleased)
 
 Execution contract and result authority: [Issue #1](https://github.com/yasuyuki/agent-at/issues/1),
