@@ -93,6 +93,11 @@ func TestPersistFlagContract(t *testing.T) {
 		{"macOS", options{Persist: true}, map[string]bool{"persist": true, "at": true}, 0, "darwin", true, false},
 		{"unsupported", options{Persist: true}, map[string]bool{"persist": true, "at": true}, 0, "freebsd", false, false},
 		{"Mac list", options{List: true}, map[string]bool{"list": true}, 0, "darwin", true, true},
+		{"password logon", options{Persist: true, Logon: logonPassword}, map[string]bool{"persist": true, "at": true, "logon": true}, 0, "windows", true, false},
+		{"interactive logon", options{Persist: true, Logon: logonInteractive}, map[string]bool{"persist": true, "at": true, "logon": true}, 0, "linux", true, false},
+		{"password logon off Windows", options{Persist: true, Logon: logonPassword}, map[string]bool{"persist": true, "at": true, "logon": true}, 0, "linux", false, false},
+		{"unknown logon", options{Persist: true, Logon: "elevated"}, map[string]bool{"persist": true, "at": true, "logon": true}, 0, "windows", false, false},
+		{"logon without persist", options{Logon: logonPassword}, map[string]bool{"logon": true, "at": true}, 1, "windows", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, err := validatePersist(tc.o, tc.set, tc.n, tc.platform)
@@ -108,6 +113,58 @@ func TestPersistFlagContract(t *testing.T) {
 				t.Fatalf("%v: %v", args, err)
 			}
 		}
+	}
+}
+
+func TestPersistPasswordStaysOutOfTheJobRecord(t *testing.T) {
+	s, f, o := testJobStore(t)
+	o.Logon = logonPassword
+	const secret = "typed at the console"
+	restore := readLogonPassword
+	readLogonPassword = func() (string, error) { return secret, nil }
+	defer func() { readLogonPassword = restore }()
+	var created taskSpec
+	f.beforeCreate = func(spec taskSpec) { created = spec }
+	j, err := s.register(o, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Logon != logonPassword || created.Password != secret {
+		t.Fatalf("create spec logon = %q, password supplied = %v", created.Logon, created.Password != "")
+	}
+	saved, err := os.ReadFile(filepath.Join(s.root, j.ID, "request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(saved, []byte(secret)) {
+		t.Fatal("the saved request contains the Windows password")
+	}
+	loaded, err := s.load(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Later management rebuilds the spec from the record alone, so the
+	// credential cannot reappear in a read-back or a removal.
+	if loaded.Request.Logon != logonPassword || s.spec(loaded).Password != "" {
+		t.Fatalf("rebuilt spec logon = %q, password present = %v", loaded.Request.Logon, s.spec(loaded).Password != "")
+	}
+}
+
+func TestPersistPasswordPromptFailureRegistersNothing(t *testing.T) {
+	s, f, o := testJobStore(t)
+	o.Logon = logonPassword
+	restore := readLogonPassword
+	readLogonPassword = func() (string, error) { return "", errors.New("no console") }
+	defer func() { readLogonPassword = restore }()
+	if _, err := s.register(o, os.Environ()); err == nil {
+		t.Fatal("registered a password job without a password")
+	}
+	entries, err := os.ReadDir(s.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 || len(f.jobs) != 0 {
+		t.Fatalf("left %d job directories and %d tasks", len(entries), len(f.jobs))
 	}
 }
 

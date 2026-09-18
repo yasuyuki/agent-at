@@ -44,6 +44,17 @@ func validatePersist(o options, set map[string]bool, positional int, platform st
 			return false, errors.New("--persist requires headless execution without new-console or close-on-exit")
 		}
 	}
+	if set["logon"] {
+		if !o.Persist {
+			return management, errors.New("--logon applies only to --persist")
+		}
+		if !knownLogon(o.Logon) {
+			return false, errors.New("--logon must be interactive or password")
+		}
+		if logonMode(o.Logon) == logonPassword && platform != "windows" {
+			return false, errors.New("--logon password requires native Windows; systemd and launchd have no saved-credential equivalent here")
+		}
+	}
 	return management, nil
 }
 
@@ -103,6 +114,10 @@ func jobEnvironment(base []string, fixed map[string]string) []string {
 	return env
 }
 
+// readLogonPassword is a variable so tests can register a password job without
+// a console. Production always resolves to the platform console prompt.
+var readLogonPassword = promptLogonPassword
+
 type persistentJob struct {
 	Version     int               `json:"version"`
 	ID          string            `json:"id"`
@@ -132,7 +147,7 @@ func (s jobStore) dir(id string) (string, error) {
 }
 
 func (s jobStore) spec(j persistentJob) taskSpec {
-	return taskSpec{ID: j.ID, SID: s.sid, Executable: j.Launcher, Directory: filepath.Dir(j.Launcher), At: j.Request.At}
+	return taskSpec{ID: j.ID, SID: s.sid, Executable: j.Launcher, Directory: filepath.Dir(j.Launcher), At: j.Request.At, Logon: j.Request.Logon}
 }
 
 func readJSON(path string, v any) error {
@@ -187,7 +202,7 @@ func (s jobStore) load(id string) (persistentJob, error) {
 		return j, errors.New("job ID/owner mismatch")
 	}
 	o := j.Request
-	if !filepath.IsAbs(j.Launcher) || !filepath.IsAbs(o.Executable) || !filepath.IsAbs(o.CD) || o.At.IsZero() || !o.Headless || o.NewConsole || o.Close || o.List || o.Remove != "" || (o.Agent != "codex" && o.Agent != "claude") {
+	if !filepath.IsAbs(j.Launcher) || !filepath.IsAbs(o.Executable) || !filepath.IsAbs(o.CD) || o.At.IsZero() || !o.Headless || o.NewConsole || o.Close || o.List || o.Remove != "" || !knownLogon(o.Logon) || (o.Agent != "codex" && o.Agent != "claude") {
 		return j, errors.New("invalid saved execution request")
 	}
 	for _, value := range append([]string{j.Launcher, o.Executable, o.CD, o.Prompt, o.Model, o.Resume}, o.AddDirs...) {
@@ -252,6 +267,14 @@ func (s jobStore) register(o options, env []string) (persistentJob, error) {
 	if _, err := platformCommand(o.Executable, args); err != nil {
 		return j, err
 	}
+	// Prompted after the request is validated and before any job directory or
+	// OS task exists, so aborting here leaves nothing behind to clean up.
+	var password string
+	if logonMode(o.Logon) == logonPassword {
+		if password, err = readLogonPassword(); err != nil {
+			return j, err
+		}
+	}
 	var id [16]byte
 	if _, err = rand.Read(id[:]); err != nil {
 		return j, err
@@ -272,14 +295,17 @@ func (s jobStore) register(o options, env []string) (persistentJob, error) {
 	if !o.At.After(time.Now()) {
 		return j, errors.Join(errors.New("scheduled time elapsed before OS registration"), os.RemoveAll(dir))
 	}
-	if err = s.tasks.Create(s.spec(j)); err != nil {
+	spec := s.spec(j)
+	spec.Password = password
+	if err = s.tasks.Create(spec); err != nil {
 		var uncertain *taskCreateError
 		if errors.As(err, &uncertain) && uncertain.Uncertain {
 			return j, fmt.Errorf("registration uncertain for job %s; retained at %s: %w", j.ID, dir, err)
 		}
 		return j, errors.Join(err, os.RemoveAll(dir))
 	}
-	if err = s.tasks.Read(s.spec(j)); err != nil {
+	spec.Password = ""
+	if err = s.tasks.Read(spec); err != nil {
 		// Do not silently remove a task whose state/ownership cannot be read.
 		return j, fmt.Errorf("registration read-back failed for job %s; task/data retained at %s: %w", j.ID, dir, err)
 	}
@@ -480,6 +506,9 @@ func (s jobStore) list(out io.Writer) error {
 		} else if j.Request.Resume != "" {
 			mode = "headless resume"
 		}
+		if logonMode(j.Request.Logon) == logonPassword {
+			mode += " / password logon"
+		}
 		fmt.Fprintf(out, "%s %s %s: %s; %s; %s\n", id, j.Request.At.Format(time.RFC3339), mode, status, osState, dir)
 	}
 	return nil
@@ -519,7 +548,7 @@ func runPersistent(o options) int {
 						model = "clean CLI default (user settings skipped)"
 					}
 				}
-				fmt.Fprintf(os.Stdout, "Registered job %s\nTask: %s\nAt: %s\nAgent: %s; model: %s\nPrivate request, stdout.log, stderr.log and result.json: %s\nRegistration succeeded; execution has not occurred. You may close this terminal.\n%s\n", j.ID, taskName(s.spec(j)), o.At.Format(time.RFC3339), o.Agent, model, filepath.Join(s.root, j.ID), persistentConditions())
+				fmt.Fprintf(os.Stdout, "Registered job %s\nTask: %s\nAt: %s\nAgent: %s; model: %s\nPrivate request, stdout.log, stderr.log and result.json: %s\nRegistration succeeded; execution has not occurred. You may close this terminal.\n%s\n", j.ID, taskName(s.spec(j)), o.At.Format(time.RFC3339), o.Agent, model, filepath.Join(s.root, j.ID), persistentConditions(o.Logon))
 			}
 		}
 	}
@@ -555,7 +584,10 @@ func persistentChild(args []string) int {
 	return code
 }
 
-func persistentConditions() string {
+func persistentConditions(logon string) string {
+	if runtime.GOOS == "windows" && logonMode(logon) == logonPassword {
+		return "Always headless in a non-interactive session. The PC must be on and awake; this user need not be signed in.\nWindows stores this account's password for the task and agent-at never saves it; changing that password\ndisables the saved task silently, without a job record. No catch-up after power-off or sleep.\nKeep executable/CLI/work paths in place."
+	}
 	if runtime.GOOS == "darwin" {
 		return "Always headless. Requires this user GUI login domain; screen lock is OK.\nLaunchAgents survive reboot. Login/resume may deliver late within the saved calendar year.\nMinute trigger checks saved seconds/year; keep system timezone and executable/CLI/work paths unchanged."
 	}

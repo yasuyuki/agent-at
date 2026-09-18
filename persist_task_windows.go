@@ -24,7 +24,7 @@ $service.Connect()
 $root = $service.GetFolder('\')
 try {
   switch ($request.operation) {
-    'create' { [void]$root.RegisterTask($request.name, $request.xml, 2, $null, $null, 3, $null); @{ok=$true} | ConvertTo-Json -Compress }
+    'create' { [void]$root.RegisterTask($request.name, $request.xml, 2, $request.user, $request.password, $request.logonType, $null); @{ok=$true} | ConvertTo-Json -Compress }
     'read'   { @{ok=$true; xml=$root.GetTask($request.name).Xml} | ConvertTo-Json -Compress }
     'delete' { $root.DeleteTask($request.name, 0); @{ok=$true} | ConvertTo-Json -Compress }
     default  { throw "unknown task scheduler operation" }
@@ -37,8 +37,26 @@ try {
 }`
 
 type windowsTaskScheduler struct {
-	run func(operation, name, definition string) (string, error)
+	run func(taskRequest) (string, error)
 }
+
+// taskRequest is the structured stdin contract with the PowerShell helper. A
+// password travels on that pipe only, never through a command line, file or
+// environment variable, and only for one create operation.
+type taskRequest struct {
+	Operation string `json:"operation"`
+	Name      string `json:"name"`
+	XML       string `json:"xml,omitempty"`
+	User      string `json:"user,omitempty"`
+	Password  string `json:"password,omitempty"`
+	LogonType int    `json:"logonType,omitempty"`
+}
+
+// TASK_LOGON_TYPE values used by RegisterTask.
+const (
+	taskLogonPassword         = 1
+	taskLogonInteractiveToken = 3
+)
 
 const (
 	hresultFileNotFound = uint32(0x80070002)
@@ -66,25 +84,45 @@ func (s windowsTaskScheduler) Create(spec taskSpec) error {
 	if err != nil {
 		return &taskCreateError{Err: err}
 	}
-	_, err = s.run("create", taskName(spec), xmlText)
+	request := taskRequest{Operation: "create", Name: taskName(spec), XML: xmlText, LogonType: taskLogonInteractiveToken}
+	if logonMode(spec.Logon) == logonPassword {
+		// Windows stores this credential for the task. Registering a password
+		// job without one would silently fall back to a weaker logon contract.
+		if spec.Password == "" {
+			return &taskCreateError{Err: errors.New("password logon requires the account password")}
+		}
+		account, accountErr := currentAccountName()
+		if accountErr != nil {
+			return &taskCreateError{Err: fmt.Errorf("resolve this account name: %w", accountErr)}
+		}
+		request.User, request.Password, request.LogonType = account, spec.Password, taskLogonPassword
+	} else if spec.Password != "" {
+		return &taskCreateError{Err: errors.New("interactive logon does not take a password")}
+	}
+	_, err = s.run(request)
 	// Once PowerShell has been invoked, a transport failure can happen after
 	// COM registered the task; callers must preserve the payload for inspection.
 	return createResult(err)
 }
 
 func (s windowsTaskScheduler) Read(spec taskSpec) error {
-	xmlText, err := s.run("read", taskName(spec), "")
+	xmlText, err := s.run(taskRequest{Operation: "read", Name: taskName(spec)})
 	if err != nil {
 		if taskNotFound(err) {
 			return os.ErrNotExist
 		}
 		return err
 	}
+	if spec.Account == "" {
+		// Windows can report the owner as the resolved account name instead of
+		// the SID. A failure here is not fatal: the SID comparison remains.
+		spec.Account, _ = currentAccountName()
+	}
 	return validateTaskXML(xmlText, spec)
 }
 
 func (s windowsTaskScheduler) Delete(spec taskSpec) error {
-	_, err := s.run("delete", taskName(spec), "")
+	_, err := s.run(taskRequest{Operation: "delete", Name: taskName(spec)})
 	if taskNotFound(err) {
 		return os.ErrNotExist
 	}
@@ -119,12 +157,8 @@ func windowsPowerShellPath() (string, error) {
 	return filepath.Join(syscall.UTF16ToString(dir[:n]), "WindowsPowerShell", "v1.0", "powershell.exe"), nil
 }
 
-func runTaskPowerShell(operation, name, definition string) (string, error) {
-	in, err := json.Marshal(struct {
-		Operation string `json:"operation"`
-		Name      string `json:"name"`
-		XML       string `json:"xml,omitempty"`
-	}{operation, name, definition})
+func runTaskPowerShell(request taskRequest) (string, error) {
+	in, err := json.Marshal(request)
 	if err != nil {
 		return "", err
 	}

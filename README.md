@@ -86,9 +86,39 @@ Node on the saved PATH. Other variables come from the OS execution environment,
 including proxy/CA requirements. Terminal-only secret variables are not
 supported, copied or restored. Credentials are read from their original homes
 at execution; expired/unsupported wake authentication fails without login or
-an API/provider fallback. No Windows password, elevation or new service is
-required; Task Scheduler permission and working CLI authentication/network
-access are prerequisites. Unsupported saved schemas are preserved and rejected.
+an API/provider fallback. The default logon mode needs no Windows
+password, elevation or new service; Task Scheduler permission and working CLI
+authentication/network access are prerequisites. Unsupported saved schemas are preserved and rejected.
+
+### Signed-out execution on Windows (unreleased)
+
+```powershell
+.\dist\agent-at.exe --persist --logon password --at 23:30 --prompt-file .\request.txt
+```
+
+`--logon password` registers the same job to run in a **non-interactive session**,
+so the scheduled time may arrive while this account is signed out: after a
+maintenance restart that stops at the sign-in screen, for example. `--logon
+interactive` is the default and keeps the behaviour above unchanged.
+
+Registration prompts once on the console for this Windows account's password.
+That is the only accepted source; a flag, file, environment variable or
+redirected input is refused, so the credential never reaches a command line or a
+shell history. Task Scheduler stores it, agent-at does not: it is absent from
+the job record, the logs and every error message. Administrator rights,
+elevation and a new service are still not required, but the account does need
+the OS to permit a non-interactive logon for it, which registration proves.
+
+**Changing the Windows password afterwards disables saved password-logon tasks
+silently.** That failure happens before agent-at starts, so no job record, log
+or result explains it; `--list` keeps showing a reserved job. Re-register
+affected jobs after a password change.
+
+Nothing else about the contract changes: least privilege, always headless, one
+time trigger, no catch-up, no wake-from-sleep, no repeat and no retry. `--list`
+marks these jobs as `password logon`. Linux and macOS reject `--logon password`;
+a systemd user manager needs its own lingering configuration instead. This mode
+has no native acceptance yet.
 
 ## Linux and macOS persistent reservations (v0.3.0)
 

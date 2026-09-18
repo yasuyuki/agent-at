@@ -219,6 +219,81 @@ func TestValidateTaskXMLPreservesPathWhitespace(t *testing.T) {
 	}
 }
 
+func TestTaskXMLChangesOnlyTheLogonType(t *testing.T) {
+	spec := testTaskSpec()
+	interactive, err := taskXML(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(interactive, "<LogonType>InteractiveToken</LogonType>") {
+		t.Fatalf("default logon type missing: %s", interactive)
+	}
+	spec.Logon = logonPassword
+	password, err := taskXML(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Least privilege, the single time trigger and every missed-run, battery
+	// and retry setting stay identical; only the logon requirement differs.
+	if strings.Replace(password, "<LogonType>Password</LogonType>", "<LogonType>InteractiveToken</LogonType>", 1) != interactive {
+		t.Fatalf("password logon changed more than the logon type: %s", password)
+	}
+	spec.Logon = "elevated"
+	if _, err := taskXML(spec); err == nil {
+		t.Fatal("accepted an unknown logon mode")
+	}
+	if err := validateTaskXML(interactive, spec); err == nil {
+		t.Fatal("validated against an unknown logon mode")
+	}
+}
+
+func TestValidateTaskXMLHoldsTheRegisteredLogonMode(t *testing.T) {
+	interactive := testTaskSpec()
+	password := testTaskSpec()
+	password.Logon = logonPassword
+	definition, err := taskXML(password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Windows may report either accepted value for a credential registration.
+	for _, reported := range []string{"Password", "InteractiveTokenOrPassword"} {
+		changed := strings.Replace(definition, "<LogonType>Password</LogonType>", "<LogonType>"+reported+"</LogonType>", 1)
+		if err := validateTaskXML(changed, password); err != nil {
+			t.Fatalf("%s: %v", reported, err)
+		}
+		if err := validateTaskXML(changed, interactive); err == nil {
+			t.Fatalf("%s accepted for an interactive job", reported)
+		}
+	}
+	// InteractiveToken cannot run while the owner is signed out, so it must
+	// never satisfy a job registered as a password job.
+	weakened := strings.Replace(definition, "<LogonType>Password</LogonType>", "<LogonType>InteractiveToken</LogonType>", 1)
+	if err := validateTaskXML(weakened, password); err == nil {
+		t.Fatal("accepted a downgraded logon type")
+	}
+}
+
+func TestValidateTaskXMLAcceptsTheResolvedOwnerName(t *testing.T) {
+	spec := testTaskSpec()
+	spec.Logon = logonPassword
+	definition, err := taskXML(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := strings.Replace(definition, "<UserId>"+spec.SID+"</UserId>", `<UserId>HOST\tester</UserId>`, 1)
+	if err := validateTaskXML(named, spec); err == nil {
+		t.Fatal("accepted an owner this job never registered")
+	}
+	spec.Account = `host\TESTER`
+	if err := validateTaskXML(named, spec); err != nil {
+		t.Fatal(err)
+	}
+	spec.Account = `HOST\other`
+	if err := validateTaskXML(named, spec); err == nil {
+		t.Fatal("accepted a different account name")
+	}
+}
+
 func testTaskSpec() taskSpec {
 	return taskSpec{ID: "81c2", SID: "S-1-5-21-123", Executable: `C:\Program Files\agent-at.exe`, Directory: `C:\work & test`, At: time.Date(2026, 9, 16, 5, 4, 3, 0, time.FixedZone("UTC+9", 9*3600))}
 }

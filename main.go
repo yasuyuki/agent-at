@@ -38,6 +38,7 @@ type options struct {
 	WakeText    string
 	WakeTimeout time.Duration
 	Persist     bool
+	Logon       string
 	List        bool
 	Remove      string
 }
@@ -50,6 +51,7 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	f.BoolVar(&o.Persist, "persist", false, "Windows/Linux/macOS: save a one-time headless OS task, then exit (Linux requires systemd user manager)")
 	f.BoolVar(&o.List, "list", false, "Windows/Linux/macOS: list this user's persistent jobs and saved results")
 	f.StringVar(&o.Remove, "remove", "", "Windows/Linux/macOS: cancel an unstarted job or delete its saved results; refuses running jobs")
+	f.StringVar(&o.Logon, "logon", "", "Windows: --persist logon mode: interactive (default) or password (runs while signed out)")
 	f.StringVar(&at, "at", "", "Local HH:mm[:ss] or YYYY-MM-DDTHH:mm[:ss]")
 	f.BoolVar(&o.Wake, "wake", false, "Send one minimal headless request; skips user settings (model: clean CLI default)")
 	f.StringVar(&o.WakeText, "wake-text", "ok", "Literal one-line reply requested by --wake")
@@ -68,7 +70,7 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	f.Usage = func() {
 		fmt.Fprintln(out, "Usage: agent-at --at TIME [options] -- \"prompt\"\n       agent-at --at TIME [options] --prompt-file FILE\n       agent-at --resume SESSION_ID [--at TIME] [options]\n       agent-at --wake --at TIME [--agent codex|claude] [--model MODEL]\n\nPlace options before the single prompt argument. Without --persist, Ctrl+C cancels while waiting.\nWake skips user settings; omitted model uses clean CLI default. Even a minimal\nrequest consumes usage; quota timer start/reset is not guaranteed. Without --persist keep the timer\nopen; it does not wake a sleeping PC. Wake policy: Codex 0.154.0 / Claude 2.1.268.\nExisting subscription file authentication is required; keychain-only/unknown\nproviders fail. Mandatory auth/policy and internal discovery may remain.\nUnsupported CLI options fail without retry.")
 		f.PrintDefaults()
-		fmt.Fprintln(out, "\nWith --persist, --at is required even for resume. Registration is not execution\nsuccess. After registration the terminal may close; the PC must be awake and the\nsame user signed in (screen lock is OK). No catch-up after sleep, power-off or\nsign-out. Always headless; no console restoration. --list / --remove JOB_ID\nmanage private payload/results under LOCALAPPDATA/agent-at/jobs. Keep agent-at,\nthe selected CLI and working paths in place. Terminal-only secrets are not saved.")
+		fmt.Fprintln(out, "\nWith --persist, --at is required even for resume. Registration is not execution\nsuccess. After registration the terminal may close; the PC must be awake and the\nsame user signed in (screen lock is OK). Windows --logon password instead runs\nthe job in a non-interactive session while signed out. It prompts once for this\naccount's Windows password, which Task Scheduler stores and agent-at never\nsaves; a later Windows password change disables the saved task silently. No\ncatch-up after sleep, power-off or sign-out. Always headless; no console\nrestoration. --list / --remove JOB_ID manage private payload/results under\nLOCALAPPDATA/agent-at/jobs. Keep agent-at, the selected CLI and working paths\nin place. Terminal-only secrets are not saved.")
 	}
 	if err := f.Parse(args); err != nil {
 		return o, err
@@ -91,6 +93,7 @@ func parseOptions(args []string, now time.Time, out io.Writer) (options, error) 
 	}
 	if o.Persist {
 		o.Headless = true
+		o.Logon = logonMode(o.Logon)
 	}
 	if o.Agent != "codex" && o.Agent != "claude" {
 		return o, errors.New("--agent must be codex or claude")

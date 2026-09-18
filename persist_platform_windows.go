@@ -68,6 +68,28 @@ func currentUserSID() (string, error) {
 	return user.User.Sid.String()
 }
 
+// currentAccountName resolves this process owner to the account name Windows
+// expects for a credential logon. It is not secret and is never persisted.
+func currentAccountName() (string, error) {
+	token, err := syscall.OpenCurrentProcessToken()
+	if err != nil {
+		return "", err
+	}
+	defer token.Close()
+	user, err := token.GetTokenUser()
+	if err != nil {
+		return "", err
+	}
+	account, domain, _, err := user.User.Sid.LookupAccount("")
+	if err != nil {
+		return "", err
+	}
+	if domain == "" {
+		return account, nil
+	}
+	return domain + `\` + account, nil
+}
+
 func protectedSecurityAttributes(sid string) (*syscall.SecurityAttributes, func(), error) {
 	sddl, err := syscall.UTF16PtrFromString("D:P(A;OICI;FA;;;" + sid + ")")
 	if err != nil {

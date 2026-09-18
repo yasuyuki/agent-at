@@ -98,6 +98,95 @@ Primary platform references: [systemd timer manual](https://github.com/systemd/s
 [Apple LaunchAgents](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
 
 
+## Signed-out Windows execution: --logon password (unreleased)
+
+Registering a job with `--logon interactive`, the default, keeps the released
+`InteractiveToken` contract unchanged. `--logon password` registers the same
+task with `LogonType=Password`, which Windows runs in a non-interactive batch
+session, so the reservation survives a maintenance restart that leaves the PC at
+the sign-in screen. Every other term is deliberately identical: least privilege,
+one time trigger, `StartWhenAvailable=false`, no wake-to-run, no repetition and
+no retry. There is still no catch-up, so a reservation whose time falls inside a
+shutdown window does not run in any mode.
+
+Registration prompts for the password on the console with echo disabled and
+accepts no other source, so the credential cannot arrive from a flag, a file, an
+environment variable or redirected input. It reaches Task Scheduler on the
+existing structured stdin pipe to the PowerShell helper, never through a command
+line. `persistentJob` does not gain a password field; `jobVersion` stays at 1 and
+the new optional `Logon` value is absent in records written before this change,
+which continue to load, list, remove and execute as interactive jobs.
+
+### Environment evidence collected before implementing
+
+On the target account (standard user, not a member of Administrators, password
+sign-in, no Microsoft Account), registering an `S4U` task was refused with access
+denied, while an `InteractiveToken` task registered and ran with result `0x0`.
+The maintainer then registered a `Password` logon task through the Task Scheduler
+UI and ran it on demand: registration succeeded and the last result was `0x0`.
+A password-logon task runs in a non-interactive session even while its owner is
+signed in, so that on-demand run demonstrates the logon path without signing out.
+
+### Automated checks
+
+Shared `taskXML`/`validateTaskXML` tests assert that switching to password logon
+changes the logon type and nothing else, that a read-back reporting `Password` or
+`InteractiveTokenOrPassword` satisfies a password job while `InteractiveToken`
+does not, that a password read-back never satisfies an interactive job, and that
+ownership accepts the registered SID or the resolved account name and no other
+value. Store tests assert that the typed password reaches `Create`, is absent
+from `request.json`, and is absent from the spec rebuilt from the record for
+read-back and removal, and that a failed prompt leaves no job directory and no
+task. Windows backend tests assert the credential and `TASK_LOGON_PASSWORD` are
+sent only for a password job, that a password job without a password is refused,
+and that an interactive job carrying a password is refused.
+
+### Native checks already run on Windows
+
+Go 1.27.1 windows/amd64, non-elevated standard user, `go build ./...`, `go vet
+./...` and `go test ./...` from the branch worktree. The suite passes except
+`TestDarwinSubscriptionStatus/claude_subscription`, which fails identically on
+unmodified main on this host and is unrelated to this change; it is recorded in
+`ISSUES.md`.
+
+A build of the branch was then exercised as a real Task Scheduler client:
+
+- `--logon elevated` is refused as an unknown mode, and `--logon password`
+  without `--persist` is refused, both before any state is created.
+- `--logon password` with redirected stdin is refused with the console
+  requirement instead of reading the pipe, proving the credential cannot be fed
+  from a script.
+- A default `--logon interactive` reservation still registers, reads back as
+  `OS registered` in `--list`, and `--remove` deletes both the task and the
+  private payload, leaving no scheduled task and no job directory. This is the
+  regression check for moving the PowerShell helper to a structured request with
+  an explicit logon type.
+
+### Native acceptance still required
+
+Each remaining item needs the account password typed at a console, which the
+maintainer must do; an agent session cannot supply it.
+
+1. Register with `--logon password` on Windows. Confirm the prompt does not echo,
+   and that the password is absent from the child process command line, from
+   `request.json`, from `stdout.log`/`stderr.log` and from any error text.
+2. Confirm the registration read-back passes, that is `--list` reports
+   `OS registered` and marks the job `password logon`. Task Scheduler may
+   normalize `UserId` to the account name and may report either accepted logon
+   type; both are accepted by design and the observed values must be recorded.
+3. Confirm `--remove JOB_ID` deletes the task and the private payload.
+4. Confirm a wrong password fails registration with a clear message and leaves no
+   job directory, and that redirected stdin is refused rather than read.
+5. On a disposable VM, or on a PC with explicit authorization to sign out:
+   register a short-future password job, sign out, let the time pass, sign back
+   in and confirm exactly one result with its logs and exit code, produced while
+   signed out. Register an interactive job in the same session and confirm it
+   still behaves as released.
+6. Change the Windows password after registering a password job and record that
+   the task fails before agent-at starts, leaving the job reserved with no result.
+
+Until items 1 to 6 are returned, this mode is implemented and unit-checked only.
+
 ## Persistent jobs / Issue #3
 
 Execution contract and result authority:
